@@ -72,7 +72,20 @@ public class OrderService {
     }
 
     public List<OrderResponse> getOrdersByCustomerId(Integer customerId) {
-        return mergeOrderLists(customerId);
+        return getOrdersByCustomerId(String.valueOf(customerId));
+    }
+
+    public List<OrderResponse> getOrdersByCustomerId(String customerId) {
+        if (DataSourceResolver.isObjectId(customerId)) {
+            return orderMongoRepository.findByCustomer_CustomerId(customerId).stream()
+                    .map(document -> orderTransformer.toResponse(document, false))
+                    .sorted(Comparator.comparing(r -> String.valueOf(r.getOrderId())))
+                    .toList();
+        }
+        if (!DataSourceResolver.isNumericId(customerId)) {
+            throw new IllegalArgumentException("Invalid customer id: " + customerId);
+        }
+        return mergeOrderLists(Integer.parseInt(customerId));
     }
 
     public OrderStatusResponse getOrderStatus(String id) {

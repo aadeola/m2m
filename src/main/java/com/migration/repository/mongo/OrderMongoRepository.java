@@ -7,4 +7,6 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 public interface OrderMongoRepository extends MongoRepository<OrderDocument, String> {
 
     List<OrderDocument> findByCustomerId(Integer customerId);
+
+    List<OrderDocument> findByCustomer_CustomerId(String customerId);
 }

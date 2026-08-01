@@ -4,15 +4,15 @@ import java.math.BigDecimal;
 
 public class EmbeddedProduct {
 
-    private Integer productId;
+    private Object productId;
     private String name;
     private BigDecimal price;
 
-    public Integer getProductId() {
+    public Object getProductId() {
         return productId;
     }
 
-    public void setProductId(Integer productId) {
+    public void setProductId(Object productId) {
         this.productId = productId;
     }
 

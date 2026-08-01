@@ -34,6 +34,6 @@ public class CustomerController {
 
     @GetMapping("/{id}/orders")
     public List<OrderResponse> getCustomerOrders(@PathVariable("id") String customerId) {
-        return orderService.getOrdersByCustomerId(Integer.parseInt(customerId));
+        return orderService.getOrdersByCustomerId(customerId);
     }
 }
