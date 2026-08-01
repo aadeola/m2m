@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "MongoDB": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "-e",
+        "MDB_MCP_CONNECTION_STRING=mongodb://host.docker.internal:27017/mydb",
+        "mongodb/mongodb-mcp-server:latest"
+      ]
+    }
+  }
+}

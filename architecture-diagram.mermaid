@@ -1,0 +1,70 @@
+flowchart TD
+    subgraph Clients["Sample Client Repos (2-3 fake services)"]
+        C1[Client Service A]
+        C2[Client Service B]
+        C3[Client Service C]
+    end
+
+    subgraph Discovery["Stage: Discovery"]
+        DA[Discovery Agent]
+        INV[(inventory.json)]
+    end
+
+    subgraph Build["Stage: Build"]
+        SGA[Shim Generation Agent]
+        SHIM[Shim API<br/>Java 21 + Spring Boot 3<br/>:8080, Legacy REST shape<br/>reads+writes, routes by migrated_at]
+        XFORM[Shared OrderTransformer]
+    end
+
+    subgraph Migrate["Stage: Backfill"]
+        BFJ[Backfill Job<br/>pages Postgres by PK,<br/>any order]
+    end
+
+    subgraph Data["Data Layer (local Docker)"]
+        PG[(Postgres legacy DB<br/>orders.migrated_at column)]
+        MONGO[(MongoDB target DB<br/>embedded documents)]
+    end
+
+    subgraph Verify["Stage: Iterate / Test"]
+        CTA[Contract Test Agent]
+        TESTS[/Contract Tests<br/>migrated + unmigrated cases/]
+    end
+
+    subgraph Observe["Stage: Coverage Check"]
+        MCP[MongoDB MCP Server<br/>used throughout: seed data,<br/>backfill verify, test generation]
+        DDA[Coverage Check Agent<br/>uses coverage-check SKILL.md]
+        REPORT[/Coverage Report<br/>+ stub contract tests/]
+    end
+
+    C1 --> DA
+    C2 --> DA
+    C3 --> DA
+    DA --> INV
+    INV --> SGA
+    SGA --> SHIM
+    SHIM --> XFORM
+    BFJ --> XFORM
+
+    SHIM <-->|route: migrated_at<br/>IS NULL| PG
+    SHIM <-->|route: migrated_at<br/>IS NOT NULL| MONGO
+    PG -->|reads unmigrated batch| BFJ
+    BFJ -->|bulk upsert| MONGO
+    BFJ -->|sets migrated_at| PG
+
+    INV --> CTA
+    CTA --> TESTS
+    TESTS -->|hits| SHIM
+    TESTS -->|hits legacy path| PG
+
+    MONGO --> MCP
+    MCP --> DDA
+    INV --> DDA
+    DDA --> REPORT
+
+    classDef agent fill:#e8d5ff,stroke:#7c3aed,stroke-width:1px
+    classDef db fill:#d5f0ff,stroke:#0284c7,stroke-width:1px
+    classDef artifact fill:#fff4d5,stroke:#d97706,stroke-width:1px
+
+    class DA,SGA,CTA,DDA,BFJ agent
+    class PG,MONGO db
+    class INV,TESTS,REPORT,XFORM artifact
