@@ -4,14 +4,16 @@ CREATE TABLE customers (
     customer_id SERIAL PRIMARY KEY,
     name        VARCHAR(255) NOT NULL,
     email       VARCHAR(255) NOT NULL UNIQUE,
-    created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+    migrated_at TIMESTAMP NULL
 );
 
 CREATE TABLE products (
     product_id SERIAL PRIMARY KEY,
     name       VARCHAR(255) NOT NULL,
     sku        VARCHAR(64) NOT NULL UNIQUE,
-    price      DECIMAL(10, 2) NOT NULL
+    price      DECIMAL(10, 2) NOT NULL,
+    migrated_at TIMESTAMP NULL
 );
 
 CREATE TABLE orders (
@@ -19,7 +21,8 @@ CREATE TABLE orders (
     customer_id  INTEGER NOT NULL REFERENCES customers (customer_id),
     order_date   DATE NOT NULL,
     status       VARCHAR(32) NOT NULL,
-    total_amount DECIMAL(10, 2) NOT NULL
+    total_amount DECIMAL(10, 2) NOT NULL,
+    migrated_at TIMESTAMP NULL
 );
 
 CREATE TABLE line_items (
@@ -29,6 +32,16 @@ CREATE TABLE line_items (
     quantity     INTEGER NOT NULL CHECK (quantity > 0),
     unit_price   DECIMAL(10, 2) NOT NULL
 );
+
+CREATE TABLE backfill_checkpoint (
+    entity_name       VARCHAR(32) PRIMARY KEY,
+    last_processed_pk INTEGER NOT NULL DEFAULT 0
+);
+
+INSERT INTO backfill_checkpoint (entity_name, last_processed_pk) VALUES
+    ('customers', 0),
+    ('products', 0),
+    ('orders', 0);
 
 INSERT INTO customers (name, email) VALUES
     ('Alice Johnson', 'alice@example.com'),

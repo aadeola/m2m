@@ -1,110 +1,122 @@
 [
   {
+    "endpoint": "/products/{id}",
+    "method": "GET",
+    "owning_service": "Client Service A",
+    "source_file": "clients/client-a/legacy_calls.sh",
+    "path_params": ["id"],
+    "query_params": [],
+    "request_fields": [],
+    "fields_used": ["product_id", "name", "sku", "price"]
+  },
+  {
     "endpoint": "/orders/{id}",
     "method": "GET",
     "owning_service": "Client Service A",
-    "fields_used": [
-      "order_id",
-      "customer_id",
-      "order_date",
-      "status",
-      "total_amount",
-      "line_items"
-    ]
+    "source_file": "clients/client-a/legacy_calls.sh",
+    "path_params": ["id"],
+    "query_params": [],
+    "request_fields": [],
+    "fields_used": ["order_id", "customer_id", "order_date", "status", "total_amount", "line_items"]
   },
   {
     "endpoint": "/orders?customer_id={customer_id}",
     "method": "GET",
     "owning_service": "Client Service A",
-    "fields_used": [
-      "order_id",
-      "customer_id",
-      "order_date",
-      "status",
-      "total_amount"
-    ]
+    "source_file": "clients/client-a/legacy_calls.sh",
+    "path_params": [],
+    "query_params": ["customer_id"],
+    "request_fields": [],
+    "fields_used": ["order_id", "customer_id", "order_date", "status", "total_amount"]
   },
   {
     "endpoint": "/orders",
     "method": "POST",
     "owning_service": "Client Service A",
-    "fields_used": [
-      "customer_id",
-      "line_items",
-      "product_id",
-      "quantity",
-      "order_id",
-      "order_date",
-      "status",
-      "total_amount"
-    ]
+    "source_file": "clients/client-a/legacy_calls.sh",
+    "path_params": [],
+    "query_params": [],
+    "request_fields": ["customer_id", "line_items", "product_id", "quantity"],
+    "fields_used": ["order_id", "customer_id", "order_date", "status", "total_amount", "line_items"]
+  },
+  {
+    "endpoint": "/products/{id}",
+    "method": "GET",
+    "owning_service": "Client Service B",
+    "source_file": "clients/client-b/legacy_calls.mjs",
+    "path_params": ["id"],
+    "query_params": [],
+    "request_fields": [],
+    "fields_used": ["product_id", "name", "sku", "price"]
   },
   {
     "endpoint": "/customers",
     "method": "GET",
     "owning_service": "Client Service B",
-    "fields_used": [
-      "customer_id",
-      "name",
-      "email",
-      "created_at"
-    ]
+    "source_file": "clients/client-b/legacy_calls.mjs",
+    "path_params": [],
+    "query_params": [],
+    "request_fields": [],
+    "fields_used": ["customer_id", "name", "email", "created_at"]
   },
   {
     "endpoint": "/customers/{id}",
     "method": "GET",
     "owning_service": "Client Service B",
-    "fields_used": [
-      "customer_id",
-      "name",
-      "email",
-      "created_at"
-    ]
+    "source_file": "clients/client-b/legacy_calls.mjs",
+    "path_params": ["id"],
+    "query_params": [],
+    "request_fields": [],
+    "fields_used": ["customer_id", "name", "email", "created_at"]
   },
   {
     "endpoint": "/orders/{id}",
     "method": "GET",
     "owning_service": "Client Service B",
-    "fields_used": [
-      "order_id",
-      "customer_id",
-      "order_date",
-      "status",
-      "total_amount",
-      "line_items"
-    ]
+    "source_file": "clients/client-b/legacy_calls.mjs",
+    "path_params": ["id"],
+    "query_params": [],
+    "request_fields": [],
+    "fields_used": ["order_id", "customer_id", "order_date", "status", "total_amount", "line_items"]
+  },
+  {
+    "endpoint": "/products/{id}",
+    "method": "GET",
+    "owning_service": "Client Service C",
+    "source_file": "clients/client-c/legacy_calls.py",
+    "path_params": ["id"],
+    "query_params": [],
+    "request_fields": [],
+    "fields_used": ["product_id", "name", "sku", "price"]
   },
   {
     "endpoint": "/orders",
     "method": "GET",
     "owning_service": "Client Service C",
-    "fields_used": [
-      "order_id",
-      "customer_id",
-      "order_date",
-      "status",
-      "total_amount"
-    ]
+    "source_file": "clients/client-c/legacy_calls.py",
+    "path_params": [],
+    "query_params": [],
+    "request_fields": [],
+    "fields_used": ["order_id", "customer_id", "order_date", "status", "total_amount"]
   },
   {
     "endpoint": "/orders/{id}/status",
     "method": "GET",
     "owning_service": "Client Service C",
-    "fields_used": [
-      "order_id",
-      "status"
-    ]
+    "source_file": "clients/client-c/legacy_calls.py",
+    "path_params": ["id"],
+    "query_params": [],
+    "request_fields": [],
+    "fields_used": ["order_id", "status"]
   },
   {
     "endpoint": "/customers/{id}/orders",
     "method": "GET",
     "owning_service": "Client Service C",
-    "fields_used": [
-      "order_id",
-      "customer_id",
-      "order_date",
-      "status",
-      "total_amount"
-    ]
+    "source_file": "clients/client-c/legacy_calls.py",
+    "path_params": ["id"],
+    "query_params": [],
+    "request_fields": [],
+    "fields_used": ["order_id", "customer_id", "order_date", "status", "total_amount"]
   }
 ]
