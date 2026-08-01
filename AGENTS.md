@@ -35,6 +35,7 @@
 - `docker-compose up -d` — start Postgres + Mongo
 - `./scripts/verify-phase0.sh` — validate Phase 0 infrastructure
 - `mvn spring-boot:run` — start the shim on :8080
+- `mvn spring-boot:run -Dspring-boot.run.arguments=--backfill` — run the backfill job only (explicit; does not run on normal startup)
 - `mvn test` — run full test suite
 - `mvn test -Dtest=*ContractTest` — run contract tests only
 - `npm run coverage-check` — run coverage-check-runner.ts via Cursor SDK

@@ -1,4 +1,4 @@
-"""Fake client service C — calls legacy order endpoints."""
+"""Fake client service C — calls legacy order and product endpoints."""
 
 import os
 import urllib.request
@@ -11,6 +11,7 @@ def fetch(path: str) -> None:
         response.read()
 
 
+fetch("/products/3")
 fetch("/orders")
 fetch("/orders/5/status")
 fetch("/customers/3/orders")
