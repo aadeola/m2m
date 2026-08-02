@@ -34,6 +34,8 @@
 ## Commands
 - `docker-compose up -d` — start Postgres + Mongo
 - `./scripts/verify-phase0.sh` — validate Phase 0 infrastructure
+- `./scripts/seed-bulk.sh` — load 5k customers / 100 products / ~50k orders / ~2.6M line items for a multi-minute backfill demo (destructive rewrite; clear Mongo separately if needed)
+- `./scripts/reset-postgres.sh` — recreate Postgres and restore the tiny init seed (use before contract tests after a bulk seed)
 - `mvn spring-boot:run` — start the shim on :8080
 - `mvn spring-boot:run -Dspring-boot.run.arguments=--backfill` — run the backfill job only (explicit; does not run on normal startup)
 - `mvn test` — run full test suite
