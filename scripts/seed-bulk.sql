@@ -5,16 +5,57 @@
 
 BEGIN;
 
-TRUNCATE TABLE line_items, orders, products, customers RESTART IDENTITY CASCADE;
+CREATE TABLE IF NOT EXISTS backfill_dlq (
+    id              SERIAL PRIMARY KEY,
+    entity_name     VARCHAR(32) NOT NULL,
+    start_pk        INTEGER NOT NULL,
+    end_pk          INTEGER NOT NULL,
+    exception_class VARCHAR(255) NOT NULL,
+    message         TEXT,
+    occurred_at     TIMESTAMP NOT NULL DEFAULT NOW(),
+    resolved        BOOLEAN NOT NULL DEFAULT FALSE,
+    resolved_at     TIMESTAMP NULL
+);
+
+CREATE OR REPLACE FUNCTION prevent_product_37_migration()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.product_id = 37
+       AND NEW.migrated_at IS NOT NULL
+       AND OLD.migrated_at IS NULL THEN
+        RAISE EXCEPTION 'Product 37 is locked pending vendor pricing review and cannot be migrated';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_prevent_product_37_migration ON products;
+CREATE TRIGGER trg_prevent_product_37_migration
+    BEFORE UPDATE ON products
+    FOR EACH ROW
+    EXECUTE FUNCTION prevent_product_37_migration();
+
+TRUNCATE backfill_dlq RESTART IDENTITY;
 
 UPDATE backfill_checkpoint
 SET last_processed_pk = 0;
 
-INSERT INTO customers (name, email)
+TRUNCATE TABLE line_items, orders, products, customers RESTART IDENTITY CASCADE;
+
+INSERT INTO customers (first_name, last_name, account_number, phone_number, email)
 SELECT
-    'Customer ' || i,
+    'First' || chr(65 + ((i - 1) % 26)),
+    'Last' || chr(65 + ((i - 1) % 26)),
+    'CUS' || lpad((i % 10000)::text, 4, '0'),
+    '555' || lpad(((i - 1) % 10000000)::text, 7, '0'),
     'customer' || i || '@example.com'
 FROM generate_series(1, 5000) AS s(i);
+
+UPDATE customers SET email = 'customer100.example.com' WHERE customer_id = 100;
+UPDATE customers SET phone_number = '5551234'           WHERE customer_id = 101;
+UPDATE customers SET account_number = 'AB12345'         WHERE customer_id = 102;
+UPDATE customers SET first_name = 'A'                   WHERE customer_id = 103;
+UPDATE customers SET last_name = 'Smith1'                 WHERE customer_id = 104;
 
 INSERT INTO products (name, sku, price)
 SELECT
@@ -60,3 +101,9 @@ SELECT 'orders', COUNT(*) FROM orders
 UNION ALL
 SELECT 'line_items', COUNT(*) FROM line_items
 ORDER BY entity;
+
+SELECT p.product_id, p.name, COUNT(li.line_item_id) AS line_item_refs
+FROM products p
+LEFT JOIN line_items li ON li.product_id = p.product_id
+WHERE p.product_id = 37
+GROUP BY p.product_id, p.name;

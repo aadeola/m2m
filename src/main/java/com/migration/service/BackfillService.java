@@ -1,6 +1,7 @@
 package com.migration.service;
 
 import com.migration.model.jpa.BackfillCheckpointEntity;
+import com.migration.model.jpa.BackfillDlqEntity;
 import com.migration.model.jpa.CustomerEntity;
 import com.migration.model.jpa.LineItemEntity;
 import com.migration.model.jpa.OrderEntity;
@@ -9,10 +10,12 @@ import com.migration.model.mongo.CustomerDocument;
 import com.migration.model.mongo.OrderDocument;
 import com.migration.model.mongo.ProductDocument;
 import com.migration.repository.jpa.BackfillCheckpointRepository;
+import com.migration.repository.jpa.BackfillDlqRepository;
 import com.migration.repository.jpa.CustomerJpaRepository;
 import com.migration.repository.jpa.LineItemJpaRepository;
 import com.migration.repository.jpa.OrderJpaRepository;
 import com.migration.repository.jpa.ProductJpaRepository;
+import com.migration.quality.CustomerInvalidFieldTagger;
 import com.migration.transform.CustomerTransformer;
 import com.migration.transform.OrderTransformer;
 import com.migration.transform.ProductTransformer;
@@ -31,6 +34,8 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
@@ -48,11 +53,14 @@ public class BackfillService {
     private final OrderJpaRepository orderJpaRepository;
     private final LineItemJpaRepository lineItemJpaRepository;
     private final BackfillCheckpointRepository checkpointRepository;
+    private final BackfillDlqRepository backfillDlqRepository;
     private final MongoTemplate mongoTemplate;
     private final CustomerTransformer customerTransformer;
+    private final CustomerInvalidFieldTagger customerInvalidFieldTagger;
     private final ProductTransformer productTransformer;
     private final OrderTransformer orderTransformer;
     private final TransactionTemplate transactionTemplate;
+    private final TransactionTemplate requiresNewTransactionTemplate;
 
     public BackfillService(
             @Value("${migration.backfill.batch-size:10}") int batchSize,
@@ -61,22 +69,29 @@ public class BackfillService {
             OrderJpaRepository orderJpaRepository,
             LineItemJpaRepository lineItemJpaRepository,
             BackfillCheckpointRepository checkpointRepository,
+            BackfillDlqRepository backfillDlqRepository,
             MongoTemplate mongoTemplate,
             CustomerTransformer customerTransformer,
+            CustomerInvalidFieldTagger customerInvalidFieldTagger,
             ProductTransformer productTransformer,
             OrderTransformer orderTransformer,
-            TransactionTemplate transactionTemplate) {
+            TransactionTemplate transactionTemplate,
+            PlatformTransactionManager transactionManager) {
         this.batchSize = batchSize;
         this.customerJpaRepository = customerJpaRepository;
         this.productJpaRepository = productJpaRepository;
         this.orderJpaRepository = orderJpaRepository;
         this.lineItemJpaRepository = lineItemJpaRepository;
         this.checkpointRepository = checkpointRepository;
+        this.backfillDlqRepository = backfillDlqRepository;
         this.mongoTemplate = mongoTemplate;
         this.customerTransformer = customerTransformer;
+        this.customerInvalidFieldTagger = customerInvalidFieldTagger;
         this.productTransformer = productTransformer;
         this.orderTransformer = orderTransformer;
         this.transactionTemplate = transactionTemplate;
+        this.requiresNewTransactionTemplate = new TransactionTemplate(transactionManager);
+        this.requiresNewTransactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     public void runBackfill() {
@@ -97,7 +112,17 @@ public class BackfillService {
                 break;
             }
             final List<CustomerEntity> currentBatch = batch;
-            totalMigrated += transactionTemplate.execute(status -> migrateCustomerBatch(currentBatch));
+            try {
+                totalMigrated += transactionTemplate.execute(status -> migrateCustomerBatch(currentBatch));
+            } catch (Exception ex) {
+                recordFailure(
+                        CUSTOMERS,
+                        currentBatch.get(0).getCustomerId(),
+                        currentBatch.get(currentBatch.size() - 1).getCustomerId(),
+                        ex);
+                log.error("Customers batch failed; halting customers migration for this run", ex);
+                return;
+            }
         } while (batch.size() == batchSize);
         log.info("Migrated {} customers", totalMigrated);
     }
@@ -107,6 +132,7 @@ public class BackfillService {
                 .map(customerTransformer::toDocument)
                 .toList();
         bulkUpsert(CustomerDocument.class, documents);
+        customerInvalidFieldTagger.tagAfterMigration(documents);
 
         LocalDateTime migratedAt = LocalDateTime.now();
         int maxPk = 0;
@@ -129,7 +155,17 @@ public class BackfillService {
                 break;
             }
             final List<ProductEntity> currentBatch = batch;
-            totalMigrated += transactionTemplate.execute(status -> migrateProductBatch(currentBatch));
+            try {
+                totalMigrated += transactionTemplate.execute(status -> migrateProductBatch(currentBatch));
+            } catch (Exception ex) {
+                recordFailure(
+                        PRODUCTS,
+                        currentBatch.get(0).getProductId(),
+                        currentBatch.get(currentBatch.size() - 1).getProductId(),
+                        ex);
+                log.error("Products batch failed; halting products migration for this run", ex);
+                return;
+            }
         } while (batch.size() == batchSize);
         log.info("Migrated {} products", totalMigrated);
     }
@@ -161,7 +197,17 @@ public class BackfillService {
                 break;
             }
             final List<OrderEntity> currentBatch = batch;
-            totalMigrated += transactionTemplate.execute(status -> migrateOrderBatch(currentBatch));
+            try {
+                totalMigrated += transactionTemplate.execute(status -> migrateOrderBatch(currentBatch));
+            } catch (Exception ex) {
+                recordFailure(
+                        ORDERS,
+                        currentBatch.get(0).getOrderId(),
+                        currentBatch.get(currentBatch.size() - 1).getOrderId(),
+                        ex);
+                log.error("Orders batch failed; halting orders migration for this run", ex);
+                return;
+            }
         } while (batch.size() == batchSize);
         log.info("Migrated {} orders", totalMigrated);
     }
@@ -192,13 +238,27 @@ public class BackfillService {
 
         Map<Integer, ProductEntity> productsById = new HashMap<>();
         for (LineItemEntity lineItem : lineItems) {
-            productsById.computeIfAbsent(lineItem.getProductId(), productId ->
-                    productJpaRepository.findById(productId)
-                            .orElseThrow(() -> new IllegalStateException(
-                                    "Missing product " + productId + " for order " + order.getOrderId())));
+            // Only embed products that have finished migrating, to respect migration ordering.
+            productJpaRepository.findById(lineItem.getProductId())
+                    .filter(product -> product.getMigratedAt() != null)
+                    .ifPresent(product -> productsById.put(lineItem.getProductId(), product));
         }
 
         return orderTransformer.toDocument(order, lineItems, customer, productsById);
+    }
+
+    private void recordFailure(String entityName, int startPk, int endPk, Exception ex) {
+        requiresNewTransactionTemplate.executeWithoutResult(status -> {
+            BackfillDlqEntity failure = new BackfillDlqEntity();
+            failure.setEntityName(entityName);
+            failure.setStartPk(startPk);
+            failure.setEndPk(endPk);
+            failure.setExceptionClass(ex.getClass().getName());
+            failure.setMessage(ex.getMessage());
+            failure.setOccurredAt(LocalDateTime.now());
+            failure.setResolved(false);
+            backfillDlqRepository.save(failure);
+        });
     }
 
     private <T> void bulkUpsert(Class<T> documentClass, List<T> documents) {

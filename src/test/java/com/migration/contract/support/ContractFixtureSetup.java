@@ -93,12 +93,17 @@ public class ContractFixtureSetup {
     }
 
     private void resetMigrationFlags() {
-        customerJpaRepository.findAll().forEach(entity -> entity.setMigratedAt(null));
-        productJpaRepository.findAll().forEach(entity -> entity.setMigratedAt(null));
-        orderJpaRepository.findAll().forEach(entity -> entity.setMigratedAt(null));
-        customerJpaRepository.saveAll(customerJpaRepository.findAll());
-        productJpaRepository.saveAll(productJpaRepository.findAll());
-        orderJpaRepository.saveAll(orderJpaRepository.findAll());
+        List<CustomerEntity> customers = customerJpaRepository.findAll();
+        customers.forEach(entity -> entity.setMigratedAt(null));
+        customerJpaRepository.saveAll(customers);
+
+        List<ProductEntity> products = productJpaRepository.findAll();
+        products.forEach(entity -> entity.setMigratedAt(null));
+        productJpaRepository.saveAll(products);
+
+        List<OrderEntity> orders = orderJpaRepository.findAll();
+        orders.forEach(entity -> entity.setMigratedAt(null));
+        orderJpaRepository.saveAll(orders);
     }
 
     private void migrateEntityFixtures() {
@@ -141,7 +146,10 @@ public class ContractFixtureSetup {
     private void insertObjectIdFixtures() {
         CustomerDocument objectIdCustomer = new CustomerDocument();
         objectIdCustomer.setId(ContractFixtures.OBJECT_ID_CUSTOMER);
-        objectIdCustomer.setName("Frank Ocean");
+        objectIdCustomer.setFirstName("Frank");
+        objectIdCustomer.setLastName("Ocean");
+        objectIdCustomer.setAccountNumber("CUS9999");
+        objectIdCustomer.setPhoneNumber("5559990001");
         objectIdCustomer.setEmail("frank@example.com");
         objectIdCustomer.setCreatedAt(LocalDateTime.of(2026, 1, 15, 10, 30, 0));
         customerMongoRepository.save(objectIdCustomer);
@@ -162,7 +170,10 @@ public class ContractFixtureSetup {
 
         EmbeddedCustomerSummary customerSummary = new EmbeddedCustomerSummary();
         customerSummary.setCustomerId(ContractFixtures.OBJECT_ID_CUSTOMER);
-        customerSummary.setName(objectIdCustomer.getName());
+        customerSummary.setFirstName(objectIdCustomer.getFirstName());
+        customerSummary.setLastName(objectIdCustomer.getLastName());
+        customerSummary.setAccountNumber(objectIdCustomer.getAccountNumber());
+        customerSummary.setPhoneNumber(objectIdCustomer.getPhoneNumber());
         customerSummary.setEmail(objectIdCustomer.getEmail());
         objectIdOrder.setCustomer(customerSummary);
 

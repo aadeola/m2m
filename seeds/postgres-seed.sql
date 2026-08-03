@@ -1,11 +1,14 @@
 -- Legacy Postgres schema and sample data for migration shim demo
 
 CREATE TABLE customers (
-    customer_id SERIAL PRIMARY KEY,
-    name        VARCHAR(255) NOT NULL,
-    email       VARCHAR(255) NOT NULL UNIQUE,
-    created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
-    migrated_at TIMESTAMP NULL
+    customer_id    SERIAL PRIMARY KEY,
+    first_name     VARCHAR(255) NOT NULL,
+    last_name      VARCHAR(255) NOT NULL,
+    account_number VARCHAR(7) NOT NULL,
+    phone_number   VARCHAR(32) NOT NULL,
+    email          VARCHAR(255) NOT NULL UNIQUE,
+    created_at     TIMESTAMP NOT NULL DEFAULT NOW(),
+    migrated_at    TIMESTAMP NULL
 );
 
 CREATE TABLE products (
@@ -38,17 +41,29 @@ CREATE TABLE backfill_checkpoint (
     last_processed_pk INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE backfill_dlq (
+    id              SERIAL PRIMARY KEY,
+    entity_name     VARCHAR(32) NOT NULL,
+    start_pk        INTEGER NOT NULL,
+    end_pk          INTEGER NOT NULL,
+    exception_class VARCHAR(255) NOT NULL,
+    message         TEXT,
+    occurred_at     TIMESTAMP NOT NULL DEFAULT NOW(),
+    resolved        BOOLEAN NOT NULL DEFAULT FALSE,
+    resolved_at     TIMESTAMP NULL
+);
+
 INSERT INTO backfill_checkpoint (entity_name, last_processed_pk) VALUES
     ('customers', 0),
     ('products', 0),
     ('orders', 0);
 
-INSERT INTO customers (name, email) VALUES
-    ('Alice Johnson', 'alice@example.com'),
-    ('Bob Smith', 'bob@example.com'),
-    ('Carol Davis', 'carol@example.com'),
-    ('Dan Lee', 'dan@example.com'),
-    ('Eve Martinez', 'eve@example.com');
+INSERT INTO customers (first_name, last_name, account_number, phone_number, email) VALUES
+    ('Alice', 'Johnson', 'CUS0001', '5550000001', 'alice@example.com'),
+    ('Bob', 'Smith', 'CUS0002', '5550000002', 'bob@example.com'),
+    ('Carol', 'Davis', 'CUS0003', '5550000003', 'carol@example.com'),
+    ('Dan', 'Lee', 'CUS0004', '5550000004', 'dan@example.com'),
+    ('Eve', 'Martinez', 'CUS0005', '5550000005', 'eve@example.com');
 
 INSERT INTO products (name, sku, price) VALUES
     ('Wireless Mouse', 'WM-001', 29.99),
