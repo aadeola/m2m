@@ -1,5 +1,6 @@
 package com.migration.service;
 
+import com.migration.exception.MongoSchemaValidationFailures;
 import com.migration.model.jpa.BackfillCheckpointEntity;
 import com.migration.model.jpa.BackfillDlqEntity;
 import com.migration.model.jpa.CustomerEntity;
@@ -238,10 +239,10 @@ public class BackfillService {
 
         Map<Integer, ProductEntity> productsById = new HashMap<>();
         for (LineItemEntity lineItem : lineItems) {
-            // Only embed products that have finished migrating, to respect migration ordering.
-            productJpaRepository.findById(lineItem.getProductId())
-                    .filter(product -> product.getMigratedAt() != null)
-                    .ifPresent(product -> productsById.put(lineItem.getProductId(), product));
+            productsById.computeIfAbsent(lineItem.getProductId(), productId ->
+                    productJpaRepository.findById(productId)
+                            .orElseThrow(() -> new IllegalStateException(
+                                    "Missing product " + productId + " for order " + order.getOrderId())));
         }
 
         return orderTransformer.toDocument(order, lineItems, customer, productsById);
@@ -265,14 +266,18 @@ public class BackfillService {
         if (documents.isEmpty()) {
             return;
         }
-        BulkOperations bulkOps = mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED, documentClass);
-        FindAndReplaceOptions upsert = FindAndReplaceOptions.options().upsert();
-        for (T document : documents) {
-            String id = extractId(document);
-            Query query = new Query(Criteria.where("_id").is(id));
-            bulkOps.replaceOne(query, document, upsert);
+        try {
+            BulkOperations bulkOps = mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED, documentClass);
+            FindAndReplaceOptions upsert = FindAndReplaceOptions.options().upsert();
+            for (T document : documents) {
+                String id = extractId(document);
+                Query query = new Query(Criteria.where("_id").is(id));
+                bulkOps.replaceOne(query, document, upsert);
+            }
+            bulkOps.execute();
+        } catch (RuntimeException ex) {
+            throw MongoSchemaValidationFailures.wrapIfSchemaValidation(documentClass, ex);
         }
-        bulkOps.execute();
     }
 
     private String extractId(Object document) {

@@ -135,9 +135,11 @@ public class OrderTransformer {
             embedded.setQuantity(item.getQuantity());
             embedded.setUnitPrice(item.getUnitPrice());
             ProductEntity product = productsById.get(item.getProductId());
-            if (product != null) {
-                embedded.setProduct(toEmbeddedProduct(product));
+            if (product == null) {
+                throw new IllegalStateException(
+                        "Missing embedded product " + item.getProductId() + " for line item " + item.getLineItemId());
             }
+            embedded.setProduct(toEmbeddedProduct(product));
             return embedded;
         }).collect(Collectors.toList());
     }
