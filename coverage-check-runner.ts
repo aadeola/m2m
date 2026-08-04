@@ -1,53 +1,60 @@
+import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 import {
-  type CoverageReport,
-  formatHumanReport,
-  isCoverageComplete,
-  runCoverageCheck,
-  validateRepoLayout,
-} from "./scripts/coverage-check-core.ts";
+  formatTaxonomyHumanReport,
+  isTaxonomyCoverageComplete,
+  runTaxonomyCoverageCheck,
+  type TaxonomyCoverageReport,
+  validateTaxonomySource,
+} from "./scripts/taxonomy-coverage-core.ts";
+import { validateRepoLayout } from "./scripts/coverage-check-core.ts";
+import {
+  buildGapHandoff,
+  buildRemediationPrompt,
+  formatGapHandoffSummary,
+} from "./scripts/taxonomy-gap-handoff.ts";
+import {
+  commitGeneratedTests,
+  createBranchFromMain,
+  createPullRequest,
+  generateBranchName,
+  getCurrentBranch,
+  runMavenValidation,
+  pushBranch,
+} from "./scripts/taxonomy-pr-flow.ts";
 
-const COVERAGE_CHECK_PROMPT = `Run the coverage-check skill for this repository.
+interface RunnerOptions {
+  localOnly: boolean;
+  json: boolean;
+  dryRun: boolean;
+  noPr: boolean;
+}
 
-1. Read inventory.json and verify every call site has a contract test.
-2. Match by method + endpoint (many inventory entries may map to one contract test).
-3. Use InventoryCatalog.java and scripts/coverage-check-core.ts as the canonical mapping.
-4. For any uncovered call site, use the MongoDB MCP server to pull a sample document
-   and suggest a stub contract test with real field names.
-5. End your response with a JSON block (in \`\`\`json fences) matching this schema:
-   {
-     "total_call_sites": number,
-     "covered_call_sites": [{ "endpoint", "method", "owning_service", "source_file", "test_class" }],
-     "uncovered_call_sites": [{ "endpoint", "method", "owning_service", "source_file", "reason" }],
-     "covered_endpoints": [{ "method", "endpoint", "testClass" }],
-     "missing_endpoints": [{ "method", "endpoint", "testClass" }],
-     "stub_test_suggestions": [{ "method", "endpoint", "suggested_test_class", "mongo_collection" }]
-   }`;
-
-function parseArgs(argv: string[]): { localOnly: boolean; json: boolean } {
+function parseArgs(argv: string[]): RunnerOptions {
   return {
     localOnly: argv.includes("--local-only"),
     json: argv.includes("--json"),
+    dryRun: argv.includes("--dry-run"),
+    noPr: argv.includes("--no-pr"),
   };
 }
 
-function extractJsonBlock(text: string): CoverageReport | null {
-  const fenceMatch = text.match(/```json\s*([\s\S]*?)```/);
-  if (!fenceMatch) {
-    return null;
+function printReport(report: TaxonomyCoverageReport, json: boolean): void {
+  if (json) {
+    console.log(JSON.stringify(report, null, 2));
+    return;
   }
-
-  try {
-    return JSON.parse(fenceMatch[1].trim()) as CoverageReport;
-  } catch {
-    return null;
-  }
+  console.log(formatTaxonomyHumanReport(report));
 }
 
-async function runAgentCoverageCheck(repoRoot: string): Promise<{
-  agentText: string;
-  parsed: CoverageReport | null;
-}> {
+function exitForReport(report: TaxonomyCoverageReport): never {
+  process.exit(isTaxonomyCoverageComplete(report) ? 0 : 1);
+}
+
+async function runRemediationAgent(
+  repoRoot: string,
+  prompt: string,
+): Promise<{ agentText: string; agentSummary: string }> {
   const { Agent } = await import("@cursor/sdk");
 
   const apiKey = process.env.CURSOR_API_KEY;
@@ -61,7 +68,7 @@ async function runAgentCoverageCheck(repoRoot: string): Promise<{
     local: { cwd: repoRoot, settingSources: [] },
   });
 
-  const run = await agent.send(COVERAGE_CHECK_PROMPT);
+  const run = await agent.send(prompt);
 
   for await (const event of run.stream()) {
     if (event.type === "assistant") {
@@ -75,97 +82,181 @@ async function runAgentCoverageCheck(repoRoot: string): Promise<{
 
   const result = await run.wait();
   if (result.status === "error") {
-    throw new Error(`Coverage check agent run failed: ${result.id}`);
+    throw new Error(`Taxonomy remediation agent run failed: ${result.id}`);
   }
 
   const agentText = result.result ?? "";
-  return { agentText, parsed: extractJsonBlock(agentText) };
-}
-
-function printReport(report: CoverageReport, json: boolean): void {
-  if (json) {
-    console.log(JSON.stringify(report, null, 2));
-    return;
-  }
-
-  console.log(formatHumanReport(report));
-
-  if (report.stub_test_suggestions.length > 0) {
-    console.log("");
-    console.log("Stub test suggestions:");
-    for (const suggestion of report.stub_test_suggestions) {
-      console.log(
-        `  - ${suggestion.method} ${suggestion.endpoint} -> ${suggestion.suggested_test_class}` +
-          (suggestion.mongo_collection ? ` (collection: ${suggestion.mongo_collection})` : ""),
-      );
+  const summaryMatch = agentText.match(/```json\s*([\s\S]*?)```/);
+  let agentSummary = "";
+  if (summaryMatch) {
+    try {
+      agentSummary = JSON.stringify(JSON.parse(summaryMatch[1].trim()), null, 2);
+    } catch {
+      agentSummary = summaryMatch[1].trim();
     }
   }
+
+  return { agentText, agentSummary };
 }
 
-function exitForReport(report: CoverageReport): never {
-  if (isCoverageComplete(report)) {
-    process.exit(0);
+async function runRemediationWorkflow(
+  repoRoot: string,
+  beforeReport: TaxonomyCoverageReport,
+  options: RunnerOptions,
+): Promise<void> {
+  const handoff = buildGapHandoff(beforeReport);
+  const branchName = generateBranchName();
+
+  if (!options.json) {
+    console.log(formatGapHandoffSummary(handoff));
+    console.log("");
   }
-  process.exit(1);
+
+  if (options.dryRun) {
+    if (options.json) {
+      console.log(JSON.stringify({ handoff, branchName, prompt: buildRemediationPrompt(handoff, branchName) }, null, 2));
+    } else {
+      console.log(`Dry run — would create branch: ${branchName}`);
+      console.log("");
+      console.log(buildRemediationPrompt(handoff, branchName));
+    }
+    process.exit(1);
+  }
+
+  if (!process.env.CURSOR_API_KEY) {
+    console.error(
+      "CURSOR_API_KEY is required for remediation. Use --local-only for gate-only mode.",
+    );
+    process.exit(1);
+  }
+
+  const previousBranch = getCurrentBranch(repoRoot);
+
+  try {
+    if (!options.json) {
+      console.log(`Creating branch ${branchName} from main...`);
+    }
+    createBranchFromMain(repoRoot, branchName);
+
+    const prompt = buildRemediationPrompt(handoff, branchName);
+    if (!options.json) {
+      console.log("Running SDK agent to draft missing tests...");
+      console.log("");
+    }
+
+    const { agentSummary } = await runRemediationAgent(repoRoot, prompt);
+
+    if (!options.json) {
+      console.log("");
+      console.log("Running targeted Maven validation...");
+    }
+
+    const validation = runMavenValidation(repoRoot, beforeReport);
+    if (!validation.success && !options.json) {
+      console.warn("Maven validation failed:");
+      console.warn(validation.output.slice(-2000));
+      console.warn("Continuing to re-scan coverage and commit any generated tests.");
+    }
+
+    const afterReport = runTaxonomyCoverageCheck(repoRoot);
+
+    if (!options.json) {
+      console.log("");
+      console.log("After remediation:");
+      console.log(formatTaxonomyHumanReport(afterReport));
+      console.log("");
+    }
+
+    const committed = commitGeneratedTests(
+      repoRoot,
+      `Add taxonomy coverage tests (${afterReport.taxonomy_coverage_percent}% build-out)\n\nAutomated remediation for missing contract, routing, transform, and migration test buckets.`,
+    );
+
+    if (!committed && !options.json) {
+      console.warn("No test files were committed — agent may not have created new tests.");
+    }
+
+    if (!options.noPr && committed) {
+      if (!options.json) {
+        console.log(`Pushing branch ${branchName}...`);
+      }
+      pushBranch(repoRoot, branchName);
+
+      const prUrl = createPullRequest({
+        repoRoot,
+        branchName,
+        handoff,
+        beforeReport,
+        afterReport,
+        agentSummary,
+      });
+
+      if (!options.json) {
+        console.log("");
+        console.log(`Pull request created: ${prUrl}`);
+        console.log("Workflow complete — PR was not merged automatically.");
+      }
+    } else if (!options.noPr && !committed && !options.json) {
+      console.warn("Skipping PR creation because no tests were committed.");
+    }
+
+    if (options.json) {
+      console.log(
+        JSON.stringify(
+          {
+            branch: branchName,
+            before: beforeReport,
+            after: afterReport,
+            committed,
+            pr_skipped: options.noPr || !committed,
+          },
+          null,
+          2,
+        ),
+      );
+    }
+
+    exitForReport(afterReport);
+  } catch (err) {
+    if (!options.json) {
+      console.error(`Remediation failed on branch ${branchName}. Attempting to restore ${previousBranch}...`);
+    }
+    try {
+      execGitRestore(repoRoot, previousBranch);
+    } catch {
+      // best-effort restore
+    }
+    throw err;
+  }
+}
+
+function execGitRestore(repoRoot: string, branch: string): void {
+  execSync(`git checkout ${branch}`, { cwd: repoRoot, stdio: "ignore" });
 }
 
 async function main(): Promise<void> {
   const repoRoot = resolve(process.cwd());
-  const { localOnly, json } = parseArgs(process.argv.slice(2));
+  const options = parseArgs(process.argv.slice(2));
 
   validateRepoLayout(repoRoot);
-  const localReport = runCoverageCheck(repoRoot);
+  validateTaxonomySource(repoRoot);
+  const report = runTaxonomyCoverageCheck(repoRoot);
 
-  if (localOnly) {
-    printReport(localReport, json);
-    exitForReport(localReport);
+  if (options.localOnly) {
+    printReport(report, options.json);
+    exitForReport(report);
   }
 
-  // Always print the deterministic local summary first.
-  if (!json) {
-    console.log("Local coverage check:");
-    console.log(formatHumanReport(localReport));
-    console.log("");
-  }
-
-  if (!process.env.CURSOR_API_KEY) {
-    console.warn(
-      "CURSOR_API_KEY not set — skipping Cursor SDK agent invocation. " +
-        "Use --local-only to run without the SDK, or set CURSOR_API_KEY for the full workflow.",
-    );
-    printReport(localReport, json);
-    exitForReport(localReport);
-  }
-
-  if (!json) {
-    console.log("Running Cursor SDK coverage-check agent...");
-    console.log("");
-  }
-
-  try {
-    const { parsed } = await runAgentCoverageCheck(repoRoot);
-
-    const finalReport = parsed ?? localReport;
-    if (!parsed && !json) {
-      console.warn("");
-      console.warn(
-        "Could not parse structured JSON from agent response; using local check result for exit code.",
-      );
+  if (isTaxonomyCoverageComplete(report)) {
+    if (!options.json) {
+      console.log("Taxonomy coverage is complete — no remediation needed.");
+      console.log("");
     }
-
-    if (json) {
-      printReport(finalReport, true);
-    }
-
-    exitForReport(finalReport);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (message.includes("CURSOR_API_KEY") || err?.constructor?.name === "CursorAgentError") {
-      console.error(`SDK startup failed: ${message}`);
-      process.exit(1);
-    }
-    throw err;
+    printReport(report, options.json);
+    process.exit(0);
   }
+
+  await runRemediationWorkflow(repoRoot, report, options);
 }
 
 main().catch((err: unknown) => {

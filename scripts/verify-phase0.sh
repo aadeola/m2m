@@ -32,7 +32,7 @@ for f in \
   pom.xml \
   AGENTS.md \
   .cursor/mcp.json \
-  .cursor/skills/coverage-check/SKILL.md \
+  .cursor/skills/taxonomy-coverage/SKILL.md \
   clients/client-a/legacy_calls.sh \
   clients/client-b/legacy_calls.mjs \
   clients/client-c/legacy_calls.py; do
