@@ -57,7 +57,7 @@
     "path_params": [],
     "query_params": [],
     "request_fields": [],
-    "fields_used": ["customer_id", "name", "email", "created_at"]
+    "fields_used": ["customer_id", "first_name", "last_name", "account_number", "phone_number", "email", "created_at"]
   },
   {
     "endpoint": "/customers/{id}",
@@ -67,7 +67,7 @@
     "path_params": ["id"],
     "query_params": [],
     "request_fields": [],
-    "fields_used": ["customer_id", "name", "email", "created_at"]
+    "fields_used": ["customer_id", "first_name", "last_name", "account_number", "phone_number", "email", "created_at"]
   },
   {
     "endpoint": "/orders/{id}",

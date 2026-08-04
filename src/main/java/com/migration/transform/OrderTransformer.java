@@ -118,7 +118,10 @@ public class OrderTransformer {
     private EmbeddedCustomerSummary toCustomerSummary(CustomerEntity customer) {
         EmbeddedCustomerSummary summary = new EmbeddedCustomerSummary();
         summary.setCustomerId(String.valueOf(customer.getCustomerId()));
-        summary.setName(customer.getName());
+        summary.setFirstName(customer.getFirstName());
+        summary.setLastName(customer.getLastName());
+        summary.setAccountNumber(customer.getAccountNumber());
+        summary.setPhoneNumber(customer.getPhoneNumber());
         summary.setEmail(customer.getEmail());
         return summary;
     }
