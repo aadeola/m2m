@@ -23,10 +23,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.bson.types.ObjectId;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class OrderService {
+
+    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 
     private final DataSourceResolver dataSourceResolver;
     private final OrderJpaRepository orderJpaRepository;
@@ -63,7 +67,7 @@ public class OrderService {
             return loadPostgresOrder(Integer.parseInt(id), true);
         }
         OrderDocument document = orderMongoRepository.findById(id)
-                .orElseThrow(() -> new RecordNotFoundException("Order not found: " + id));
+                .orElseThrow(() -> orderNotFound(id));
         return orderTransformer.toResponse(document, true);
     }
 
@@ -92,11 +96,11 @@ public class OrderService {
         DataSource dataSource = dataSourceResolver.resolveDataSource(EntityType.ORDER, id);
         if (dataSource == DataSource.POSTGRES) {
             OrderEntity order = orderJpaRepository.findById(Integer.parseInt(id))
-                    .orElseThrow(() -> new RecordNotFoundException("Order not found: " + id));
+                    .orElseThrow(() -> orderNotFound(id));
             return orderTransformer.toStatusResponse(order);
         }
         OrderDocument document = orderMongoRepository.findById(id)
-                .orElseThrow(() -> new RecordNotFoundException("Order not found: " + id));
+                .orElseThrow(() -> orderNotFound(id));
         return orderTransformer.toStatusResponse(document);
     }
 
@@ -123,11 +127,16 @@ public class OrderService {
 
     private OrderResponse loadPostgresOrder(Integer orderId, boolean includeLineItems) {
         OrderEntity order = orderJpaRepository.findById(orderId)
-                .orElseThrow(() -> new RecordNotFoundException("Order not found: " + orderId));
+                .orElseThrow(() -> orderNotFound(orderId));
         List<LineItemEntity> lineItems = includeLineItems
                 ? lineItemJpaRepository.findByOrderIdOrderByLineItemIdAsc(orderId)
                 : List.of();
         return orderTransformer.toResponse(order, lineItems, includeLineItems);
+    }
+
+    private static RecordNotFoundException orderNotFound(Object id) {
+        log.info("Order not found: {}", id);
+        return new RecordNotFoundException("Order not found: " + id);
     }
 
     private List<OrderResponse> mergeOrderLists(Integer customerId) {
