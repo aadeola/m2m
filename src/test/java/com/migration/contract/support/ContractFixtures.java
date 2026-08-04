@@ -24,7 +24,7 @@ public final class ContractFixtures {
         return switch (scenario) {
             case UNMIGRATED -> String.valueOf(UNMIGRATED_PRODUCT_ID);
             case MIGRATED -> String.valueOf(MIGRATED_PRODUCT_ID);
-            case OBJECT_ID -> OBJECT_ID_PRODUCT;
+            case NEW -> OBJECT_ID_PRODUCT;
         };
     }
 
@@ -32,7 +32,7 @@ public final class ContractFixtures {
         return switch (scenario) {
             case UNMIGRATED -> String.valueOf(UNMIGRATED_CUSTOMER_ID);
             case MIGRATED -> String.valueOf(MIGRATED_CUSTOMER_ID);
-            case OBJECT_ID -> OBJECT_ID_CUSTOMER;
+            case NEW -> OBJECT_ID_CUSTOMER;
         };
     }
 
@@ -40,7 +40,7 @@ public final class ContractFixtures {
         return switch (scenario) {
             case UNMIGRATED -> String.valueOf(UNMIGRATED_ORDER_ID);
             case MIGRATED -> String.valueOf(MIGRATED_ORDER_ID);
-            case OBJECT_ID -> OBJECT_ID_ORDER;
+            case NEW -> OBJECT_ID_ORDER;
         };
     }
 }

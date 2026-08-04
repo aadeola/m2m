@@ -39,7 +39,7 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * Seeds migrated/ObjectId fixtures and registers canonical legacy responses on the stub server.
+ * Seeds migrated/new (Mongo-native) fixtures and registers canonical legacy responses on the stub server.
  */
 @Component
 public class ContractFixtureSetup {
@@ -93,12 +93,17 @@ public class ContractFixtureSetup {
     }
 
     private void resetMigrationFlags() {
-        customerJpaRepository.findAll().forEach(entity -> entity.setMigratedAt(null));
-        productJpaRepository.findAll().forEach(entity -> entity.setMigratedAt(null));
-        orderJpaRepository.findAll().forEach(entity -> entity.setMigratedAt(null));
-        customerJpaRepository.saveAll(customerJpaRepository.findAll());
-        productJpaRepository.saveAll(productJpaRepository.findAll());
-        orderJpaRepository.saveAll(orderJpaRepository.findAll());
+        List<CustomerEntity> customers = customerJpaRepository.findAll();
+        customers.forEach(entity -> entity.setMigratedAt(null));
+        customerJpaRepository.saveAll(customers);
+
+        List<ProductEntity> products = productJpaRepository.findAll();
+        products.forEach(entity -> entity.setMigratedAt(null));
+        productJpaRepository.saveAll(products);
+
+        List<OrderEntity> orders = orderJpaRepository.findAll();
+        orders.forEach(entity -> entity.setMigratedAt(null));
+        orderJpaRepository.saveAll(orders);
     }
 
     private void migrateEntityFixtures() {
@@ -141,7 +146,10 @@ public class ContractFixtureSetup {
     private void insertObjectIdFixtures() {
         CustomerDocument objectIdCustomer = new CustomerDocument();
         objectIdCustomer.setId(ContractFixtures.OBJECT_ID_CUSTOMER);
-        objectIdCustomer.setName("Frank Ocean");
+        objectIdCustomer.setFirstName("Frank");
+        objectIdCustomer.setLastName("Ocean");
+        objectIdCustomer.setAccountNumber("CUS9999");
+        objectIdCustomer.setPhoneNumber("5559990001");
         objectIdCustomer.setEmail("frank@example.com");
         objectIdCustomer.setCreatedAt(LocalDateTime.of(2026, 1, 15, 10, 30, 0));
         customerMongoRepository.save(objectIdCustomer);
@@ -162,7 +170,10 @@ public class ContractFixtureSetup {
 
         EmbeddedCustomerSummary customerSummary = new EmbeddedCustomerSummary();
         customerSummary.setCustomerId(ContractFixtures.OBJECT_ID_CUSTOMER);
-        customerSummary.setName(objectIdCustomer.getName());
+        customerSummary.setFirstName(objectIdCustomer.getFirstName());
+        customerSummary.setLastName(objectIdCustomer.getLastName());
+        customerSummary.setAccountNumber(objectIdCustomer.getAccountNumber());
+        customerSummary.setPhoneNumber(objectIdCustomer.getPhoneNumber());
         customerSummary.setEmail(objectIdCustomer.getEmail());
         objectIdOrder.setCustomer(customerSummary);
 
@@ -270,7 +281,7 @@ public class ContractFixtureSetup {
                     productJpaRepository.findById(ContractFixtures.UNMIGRATED_PRODUCT_ID).orElseThrow());
             case MIGRATED -> productTransformer.toResponse(
                     productMongoRepository.findById(String.valueOf(ContractFixtures.MIGRATED_PRODUCT_ID)).orElseThrow());
-            case OBJECT_ID -> productTransformer.toResponse(
+            case NEW -> productTransformer.toResponse(
                     productMongoRepository.findById(ContractFixtures.OBJECT_ID_PRODUCT).orElseThrow());
         };
     }
@@ -281,7 +292,7 @@ public class ContractFixtureSetup {
                     customerJpaRepository.findById(ContractFixtures.UNMIGRATED_CUSTOMER_ID).orElseThrow());
             case MIGRATED -> customerTransformer.toResponse(
                     customerMongoRepository.findById(String.valueOf(ContractFixtures.MIGRATED_CUSTOMER_ID)).orElseThrow());
-            case OBJECT_ID -> customerTransformer.toResponse(
+            case NEW -> customerTransformer.toResponse(
                     customerMongoRepository.findById(ContractFixtures.OBJECT_ID_CUSTOMER).orElseThrow());
         };
     }
@@ -298,7 +309,7 @@ public class ContractFixtureSetup {
             case MIGRATED -> orderTransformer.toResponse(
                     orderMongoRepository.findById(String.valueOf(ContractFixtures.MIGRATED_ORDER_ID)).orElseThrow(),
                     includeLineItems);
-            case OBJECT_ID -> orderTransformer.toResponse(
+            case NEW -> orderTransformer.toResponse(
                     orderMongoRepository.findById(ContractFixtures.OBJECT_ID_ORDER).orElseThrow(), includeLineItems);
         };
     }
@@ -309,7 +320,7 @@ public class ContractFixtureSetup {
                     orderJpaRepository.findById(ContractFixtures.UNMIGRATED_ORDER_ID).orElseThrow());
             case MIGRATED -> orderTransformer.toStatusResponse(
                     orderMongoRepository.findById(String.valueOf(ContractFixtures.MIGRATED_ORDER_ID)).orElseThrow());
-            case OBJECT_ID -> orderTransformer.toStatusResponse(
+            case NEW -> orderTransformer.toStatusResponse(
                     orderMongoRepository.findById(ContractFixtures.OBJECT_ID_ORDER).orElseThrow());
         };
     }
@@ -351,6 +362,6 @@ public class ContractFixtureSetup {
     }
 
     private List<OrderResponse> buildObjectIdCustomerOrdersResponse() {
-        return List.of(buildOrderResponse(RoutingScenario.OBJECT_ID, false));
+        return List.of(buildOrderResponse(RoutingScenario.NEW, false));
     }
 }

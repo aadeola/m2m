@@ -9,3 +9,8 @@ target/
 .settings/
 .DS_Store
 node_modules/
+.dlq-agent.lock
+.dlq-agent.lock.*
+
+.env
+.env.local

@@ -12,7 +12,10 @@ public class CustomerTransformer {
     public CustomerDocument toDocument(CustomerEntity entity) {
         CustomerDocument document = new CustomerDocument();
         document.setId(String.valueOf(entity.getCustomerId()));
-        document.setName(entity.getName());
+        document.setFirstName(entity.getFirstName());
+        document.setLastName(entity.getLastName());
+        document.setAccountNumber(entity.getAccountNumber());
+        document.setPhoneNumber(entity.getPhoneNumber());
         document.setEmail(entity.getEmail());
         document.setCreatedAt(entity.getCreatedAt());
         return document;
@@ -21,7 +24,10 @@ public class CustomerTransformer {
     public CustomerResponse toResponse(CustomerEntity entity) {
         CustomerResponse response = new CustomerResponse();
         response.setCustomerId(entity.getCustomerId());
-        response.setName(entity.getName());
+        response.setFirstName(entity.getFirstName());
+        response.setLastName(entity.getLastName());
+        response.setAccountNumber(entity.getAccountNumber());
+        response.setPhoneNumber(entity.getPhoneNumber());
         response.setEmail(entity.getEmail());
         response.setCreatedAt(entity.getCreatedAt());
         return response;
@@ -30,7 +36,10 @@ public class CustomerTransformer {
     public CustomerResponse toResponse(CustomerDocument document) {
         CustomerResponse response = new CustomerResponse();
         response.setCustomerId(parseId(document.getId()));
-        response.setName(document.getName());
+        response.setFirstName(document.getFirstName());
+        response.setLastName(document.getLastName());
+        response.setAccountNumber(document.getAccountNumber());
+        response.setPhoneNumber(document.getPhoneNumber());
         response.setEmail(document.getEmail());
         response.setCreatedAt(document.getCreatedAt());
         return response;

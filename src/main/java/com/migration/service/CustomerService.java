@@ -78,7 +78,10 @@ public class CustomerService {
                 .orElseThrow(() -> new RecordNotFoundException("Customer not found: " + customerId));
         CustomerEntity entity = new CustomerEntity();
         entity.setCustomerId(customerId);
-        entity.setName(document.getName());
+        entity.setFirstName(document.getFirstName());
+        entity.setLastName(document.getLastName());
+        entity.setAccountNumber(document.getAccountNumber());
+        entity.setPhoneNumber(document.getPhoneNumber());
         entity.setEmail(document.getEmail());
         entity.setCreatedAt(document.getCreatedAt());
         return entity;
