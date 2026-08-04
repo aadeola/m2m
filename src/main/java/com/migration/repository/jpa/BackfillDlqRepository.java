@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface BackfillDlqRepository extends JpaRepository<BackfillDlqEntity, Integer> {
 
     List<BackfillDlqEntity> findByResolvedFalse();
+
+    List<BackfillDlqEntity> findByResolvedTrue();
 }

@@ -1,5 +1,6 @@
 package com.migration.service;
 
+import com.migration.exception.MongoSchemaValidationFailures;
 import com.migration.model.jpa.BackfillCheckpointEntity;
 import com.migration.model.jpa.BackfillDlqEntity;
 import com.migration.model.jpa.CustomerEntity;
@@ -265,14 +266,18 @@ public class BackfillService {
         if (documents.isEmpty()) {
             return;
         }
-        BulkOperations bulkOps = mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED, documentClass);
-        FindAndReplaceOptions upsert = FindAndReplaceOptions.options().upsert();
-        for (T document : documents) {
-            String id = extractId(document);
-            Query query = new Query(Criteria.where("_id").is(id));
-            bulkOps.replaceOne(query, document, upsert);
+        try {
+            BulkOperations bulkOps = mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED, documentClass);
+            FindAndReplaceOptions upsert = FindAndReplaceOptions.options().upsert();
+            for (T document : documents) {
+                String id = extractId(document);
+                Query query = new Query(Criteria.where("_id").is(id));
+                bulkOps.replaceOne(query, document, upsert);
+            }
+            bulkOps.execute();
+        } catch (RuntimeException ex) {
+            throw MongoSchemaValidationFailures.wrapIfSchemaValidation(documentClass, ex);
         }
-        bulkOps.execute();
     }
 
     private String extractId(Object document) {

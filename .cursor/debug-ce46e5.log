@@ -662,3 +662,7 @@
 {"sessionId":"ce46e5","hypothesisId":"A,B","location":"DataSourceResolver.resolveDataSource","message":"route decision","data":{"entityType":"ORDER","id":"1","numericId":1,"isMigrated":false,"source":"POSTGRES"},"timestamp":1785720849118}
 {"sessionId":"ce46e5","hypothesisId":"A,B","location":"DataSourceResolver.resolveDataSource","message":"route decision","data":{"entityType":"ORDER","id":"2","numericId":2,"isMigrated":true,"source":"MONGO"},"timestamp":1785720849250}
 {"sessionId":"ce46e5","hypothesisId":"C","location":"DataSourceResolver.resolveDataSource","message":"route decision","data":{"entityType":"ORDER","id":"507f191e810c19729de860ec","reason":"objectId","source":"MONGO"},"timestamp":1785720849384}
+{"sessionId":"ce46e5","hypothesisId":"A,B","location":"DataSourceResolver.resolveDataSource","message":"route decision","data":{"entityType":"PRODUCT","id":"1","numericId":1,"isMigrated":true,"source":"MONGO"},"timestamp":1785804810081}
+{"sessionId":"ce46e5","hypothesisId":"C,D","location":"ProductService.getProductById","message":"read branch","data":{"id":"1","dataSource":"MONGO"},"timestamp":1785804810082}
+{"sessionId":"ce46e5","hypothesisId":"A,B","location":"DataSourceResolver.resolveDataSource","message":"route decision","data":{"entityType":"PRODUCT","id":"1","numericId":1,"isMigrated":true,"source":"MONGO"},"timestamp":1785805489028}
+{"sessionId":"ce46e5","hypothesisId":"C,D","location":"ProductService.getProductById","message":"read branch","data":{"id":"1","dataSource":"MONGO"},"timestamp":1785805489029}

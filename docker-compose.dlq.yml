@@ -1,0 +1,55 @@
+# Isolated Postgres + Mongo for DLQ agent triage.
+# Launch with a unique project name so it never collides with prod:
+#   docker compose -p dlq-<id> -f docker-compose.dlq.yml up -d
+#
+# Host ports (defaults): Postgres 15432, Mongo 37017
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: migration
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "${DLQ_PG_PORT:-15432}:5432"
+    volumes:
+      - ./seeds/postgres-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d migration"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  mongo:
+    image: mongo:7
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "${DLQ_MONGO_PORT:-37017}:27017"
+    volumes:
+      - mongo_dlq_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  mongo-init:
+    image: mongo:7
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: "no"
+    volumes:
+      - ./seeds/mongo-init.js:/mongo-init.js:ro
+    entrypoint:
+      - mongosh
+      - --host
+      - mongo:27017
+      - --quiet
+      - /mongo-init.js
+
+volumes:
+  mongo_dlq_data:
