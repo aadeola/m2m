@@ -11,14 +11,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Ensures docker-compose Postgres and Mongo are running before contract tests.
  */
-final class DockerComposeSupport {
+public final class DockerComposeSupport {
 
     private static final AtomicBoolean STARTED = new AtomicBoolean(false);
 
     private DockerComposeSupport() {
     }
 
-    static void ensureRunning() throws IOException, InterruptedException {
+    public static void ensureRunning() throws IOException, InterruptedException {
         if (!STARTED.compareAndSet(false, true)) {
             return;
         }

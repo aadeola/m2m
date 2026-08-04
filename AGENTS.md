@@ -38,4 +38,7 @@
 - `mvn spring-boot:run -Dspring-boot.run.arguments=--backfill` — run the backfill job only (explicit; does not run on normal startup)
 - `mvn test` — run full test suite
 - `mvn test -Dtest=*ContractTest` — run contract tests only
-- `npm run coverage-check` — run coverage-check-runner.ts via Cursor SDK
+- `npm run taxonomy-coverage:local` — deterministic taxonomy + inventory call-site coverage gate
+- `npm run taxonomy-coverage` — full SDK workflow: detect gaps, draft tests on a branch, open PR (never merges)
+- `npm run taxonomy-coverage:local -- --json` — machine-readable coverage report
+- `npm run taxonomy-coverage -- --dry-run` — preview gap handoff and agent prompt without branching

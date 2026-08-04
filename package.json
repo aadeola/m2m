@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "taxonomy-coverage": "tsx coverage-check-runner.ts",
+    "taxonomy-coverage:local": "tsx coverage-check-runner.ts --local-only",
     "coverage-check": "tsx coverage-check-runner.ts",
     "coverage-check:local": "tsx coverage-check-runner.ts --local-only"
   },
