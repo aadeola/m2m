@@ -239,9 +239,7 @@ public class BackfillService {
 
         Map<Integer, ProductEntity> productsById = new HashMap<>();
         for (LineItemEntity lineItem : lineItems) {
-            // Only embed products that have finished migrating, to respect migration ordering.
             productJpaRepository.findById(lineItem.getProductId())
-                    .filter(product -> product.getMigratedAt() != null)
                     .ifPresent(product -> productsById.put(lineItem.getProductId(), product));
         }
 

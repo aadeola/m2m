@@ -17,14 +17,16 @@ class CustomerTransformerTest {
     void toDocument_mapsEntityFieldsAndUsesStringPkAsMongoId() {
         CustomerEntity entity = new CustomerEntity();
         entity.setCustomerId(7);
-        entity.setName("Alice");
+        entity.setFirstName("Alice");
+        entity.setLastName("Smith");
         entity.setEmail("alice@example.com");
         entity.setCreatedAt(LocalDateTime.of(2025, 1, 1, 10, 0));
 
         CustomerDocument document = transformer.toDocument(entity);
 
         assertEquals("7", document.getId());
-        assertEquals("Alice", document.getName());
+        assertEquals("Alice", document.getFirstName());
+        assertEquals("Smith", document.getLastName());
         assertEquals("alice@example.com", document.getEmail());
         assertEquals(entity.getCreatedAt(), document.getCreatedAt());
     }
@@ -33,14 +35,16 @@ class CustomerTransformerTest {
     void toResponse_fromEntity_preservesLegacyShape() {
         CustomerEntity entity = new CustomerEntity();
         entity.setCustomerId(7);
-        entity.setName("Alice");
+        entity.setFirstName("Alice");
+        entity.setLastName("Smith");
         entity.setEmail("alice@example.com");
         entity.setCreatedAt(LocalDateTime.of(2025, 1, 1, 10, 0));
 
         CustomerResponse response = transformer.toResponse(entity);
 
         assertEquals(7, response.getCustomerId());
-        assertEquals("Alice", response.getName());
+        assertEquals("Alice", response.getFirstName());
+        assertEquals("Smith", response.getLastName());
         assertEquals("alice@example.com", response.getEmail());
         assertEquals(entity.getCreatedAt(), response.getCreatedAt());
     }
@@ -49,7 +53,8 @@ class CustomerTransformerTest {
     void toResponse_fromDocument_numericIdParsesToInteger() {
         CustomerDocument document = new CustomerDocument();
         document.setId("7");
-        document.setName("Alice");
+        document.setFirstName("Alice");
+        document.setLastName("Smith");
         document.setEmail("alice@example.com");
         document.setCreatedAt(LocalDateTime.of(2025, 1, 1, 10, 0));
 
@@ -63,7 +68,8 @@ class CustomerTransformerTest {
         String objectId = "507f191e810c19729de860eb";
         CustomerDocument document = new CustomerDocument();
         document.setId(objectId);
-        document.setName("Bob");
+        document.setFirstName("Bob");
+        document.setLastName("Jones");
         document.setEmail("bob@example.com");
 
         CustomerResponse response = transformer.toResponse(document);

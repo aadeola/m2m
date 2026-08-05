@@ -151,7 +151,8 @@ class OrderTransformerTest {
     private static CustomerEntity customer(int customerId) {
         CustomerEntity customer = new CustomerEntity();
         customer.setCustomerId(customerId);
-        customer.setName("Alice");
+        customer.setFirstName("Alice");
+        customer.setLastName("Smith");
         customer.setEmail("alice@example.com");
         return customer;
     }

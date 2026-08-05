@@ -46,6 +46,9 @@ class BackfillJobTest {
                     null,
                     null,
                     null,
+                    null,
+                    null,
+                    null,
                     null);
         }
 
