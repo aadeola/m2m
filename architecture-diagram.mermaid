@@ -1,70 +1,82 @@
-flowchart TD
-    subgraph Clients["Sample Client Repos (2-3 fake services)"]
+flowchart TB
+    subgraph Clients["Clients"]
+        C3[Client Service C]
         C1[Client Service A]
         C2[Client Service B]
-        C3[Client Service C]
     end
 
-    subgraph Discovery["Stage: Discovery"]
-        DA[Discovery Agent]
-        INV[(inventory.json)]
+    subgraph OpsRow[" "]
+        direction LR
+
+        subgraph Backfill["Backfill"]
+            direction TB
+            BFJ["BackfillJob --backfill"]
+            BFS[BackfillService]
+            pull["1. Pull unmigrated rows"]
+            upsert["2. Bulk upsert"]
+            stamp["3. Set migrated_at"]
+            CKPT[("backfill_checkpoint")]
+            DLQ[(backfill_dlq)]
+            BFJ --> BFS
+            BFS --> pull
+            pull --> upsert
+            upsert --> stamp
+            BFS -->|"success update checkpoint"| CKPT
+            BFS -->|"advanceCheckpointPastFailure"| CKPT
+            BFS -->|"failure record to DLQ"| DLQ
+        end
+
+        subgraph DlqTriage["DLQ triage"]
+            direction TB
+            CRON["Cron every minute npm run dlq"]
+            DLQAGENT["dlq-agent.ts Cursor SDK"]
+            FETCH["fetch unresolved DLQ rows"]
+            PR["dlq-fix PR"]
+            ISOLATE["Isolated compose :15432 / :37017"]
+            CRON --> DLQAGENT
+            DLQAGENT --> FETCH
+            DLQAGENT --> PR
+            DLQAGENT --> ISOLATE
+        end
     end
 
-    subgraph Build["Stage: Build"]
-        SGA[Shim Generation Agent]
-        SHIM[Shim API<br/>Java 21 + Spring Boot 3<br/>:8080, Legacy REST shape<br/>reads+writes, routes by migrated_at]
-        XFORM[Shared OrderTransformer]
+    subgraph Shim["Migration Shim :8080"]
+        direction TB
+        CTRL[Controllers]
+        DLQAPI["GET /admin/backfill/dlq"]
+        SVC[Services]
+        XFORM["Shared Transformers Customer Product Order"]
+        RESOLVER[DataSourceResolver]
+        CTRL -->|"GET / POST"| SVC
+        SVC -->|"resolve DataSource"| RESOLVER
+        SVC -->|"GET toResponse POST toDocument"| XFORM
     end
 
-    subgraph Migrate["Stage: Backfill"]
-        BFJ[Backfill Job<br/>pages Postgres by PK,<br/>any order]
+    subgraph DataSources["Data sources"]
+        MONGO[(Mongo)]
+        PG[(Postgres)]
     end
 
-    subgraph Data["Data Layer (local Docker)"]
-        PG[(Postgres legacy DB<br/>orders.migrated_at column)]
-        MONGO[(MongoDB target DB<br/>embedded documents)]
-    end
+    C3 -->|"GET / POST"| CTRL
+    C1 -->|"GET / POST"| CTRL
+    C2 -->|"GET / POST"| CTRL
 
-    subgraph Verify["Stage: Iterate / Test"]
-        CTA[Contract Test Agent]
-        TESTS[/Contract Tests<br/>migrated + unmigrated cases/]
-    end
+    RESOLVER -->|"migrated_at IS NULL"| PG
+    RESOLVER -->|"migrated_at IS NOT NULL or ObjectId"| MONGO
+    SVC -->|"POST create"| MONGO
 
-    subgraph Observe["Stage: Coverage Check"]
-        MCP[MongoDB MCP Server<br/>used throughout: seed data,<br/>backfill verify, test generation]
-        DDA[Coverage Check Agent<br/>uses coverage-check SKILL.md]
-        REPORT[/Coverage Report<br/>+ stub contract tests/]
-    end
+    pull -->|"read"| PG
+    upsert -->|"write"| MONGO
+    stamp -->|"update"| PG
+    CKPT -->|"start cursor"| BFS
+    BFS --> XFORM
+    DLQAPI --> DLQ
+    FETCH --> DLQAPI
 
-    C1 --> DA
-    C2 --> DA
-    C3 --> DA
-    DA --> INV
-    INV --> SGA
-    SGA --> SHIM
-    SHIM --> XFORM
-    BFJ --> XFORM
-
-    SHIM <-->|route: migrated_at<br/>IS NULL| PG
-    SHIM <-->|route: migrated_at<br/>IS NOT NULL| MONGO
-    PG -->|reads unmigrated batch| BFJ
-    BFJ -->|bulk upsert| MONGO
-    BFJ -->|sets migrated_at| PG
-
-    INV --> CTA
-    CTA --> TESTS
-    TESTS -->|hits| SHIM
-    TESTS -->|hits legacy path| PG
-
-    MONGO --> MCP
-    MCP --> DDA
-    INV --> DDA
-    DDA --> REPORT
-
-    classDef agent fill:#e8d5ff,stroke:#7c3aed,stroke-width:1px
+    classDef runtime fill:#e8d5ff,stroke:#7c3aed,stroke-width:1px
     classDef db fill:#d5f0ff,stroke:#0284c7,stroke-width:1px
     classDef artifact fill:#fff4d5,stroke:#d97706,stroke-width:1px
 
-    class DA,SGA,CTA,DDA,BFJ agent
-    class PG,MONGO db
-    class INV,TESTS,REPORT,XFORM artifact
+    class CTRL,SVC,RESOLVER,BFJ,BFS,DLQAGENT,FETCH,pull,upsert,stamp runtime
+    class PG,MONGO,CKPT,DLQ db
+    class XFORM artifact

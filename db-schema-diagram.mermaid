@@ -5,9 +5,13 @@ erDiagram
 
     CUSTOMERS {
         int customer_id PK
-        string name
+        string first_name
+        string last_name
+        string account_number
+        string phone_number
         string email
         timestamp created_at
+        timestamp migrated_at
     }
 
     ORDERS {
@@ -16,6 +20,7 @@ erDiagram
         date order_date
         string status
         decimal total_amount
+        timestamp migrated_at
     }
 
     LINE_ITEMS {
@@ -31,4 +36,22 @@ erDiagram
         string name
         string sku
         decimal price
+        timestamp migrated_at
+    }
+
+    BACKFILL_CHECKPOINT {
+        string entity_name PK
+        int last_processed_pk
+    }
+
+    BACKFILL_DLQ {
+        int id PK
+        string entity_name
+        int start_pk
+        int end_pk
+        string exception_class
+        string message
+        timestamp occurred_at
+        bool resolved
+        timestamp resolved_at
     }

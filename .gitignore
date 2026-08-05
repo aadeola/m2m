@@ -12,5 +12,9 @@ node_modules/
 .dlq-agent.lock
 .dlq-agent.lock.*
 
+# Local runtime / agent logs
+.*.log
+.cursor/debug*
+
 .env
 .env.local

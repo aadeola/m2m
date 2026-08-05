@@ -12,7 +12,9 @@
   job — one source of truth for the embedded document shape, don't duplicate it
 - Package structure: controller / service / repository (jpa + mongo) / transform / dto
 - Backfill DLQ (`backfill_dlq`): failed batches are caught (app does not crash),
-  recorded with exception class/message, and that entity's migration halts for the run.
+  recorded with exception class/message, and then skipped — the migration
+  advances the checkpoint past the failed batch and continues with the rest of
+  that entity (a single poison batch does not stop the run).
   Mongo schema validation failures (code 121) are wrapped as
   `MongoSchemaValidationException` before DLQ persistence.
 
@@ -37,13 +39,15 @@
 - Admin DLQ API `GET /admin/backfill/dlq` is internal tooling (not a legacy client
   contract); do not add it to inventory.json / contract tests
 - DLQ agent safety: never write to prod DBs from the triage agent, never set
-  `resolved=true` from the agent, never commit to `main`, branch
-  `dlq-fix/<entity>-<startPk>-<endPk>`, tear down `docker compose -p dlq-<id> … down -v`
+  `resolved=true` from the agent, never commit to `main`, create branch
+  `dlq-fix/<entity>-<startPk>-<endPk>` from **`origin/main`** (fetch first;
+  do not base the branch on local `main`), tear down
+  `docker compose -p dlq-<id> … down -v`
 
 ## Commands
 - `docker-compose up -d` — start Postgres + Mongo
 - `./scripts/verify-phase0.sh` — validate Phase 0 infrastructure
-- `./scripts/seed-bulk.sh` — load 5k customers / 100 products / ~50k orders / ~2.6M line items for a multi-minute backfill demo (destructive rewrite; clear Mongo separately if needed)
+- `./scripts/seed-bulk.sh` — load 1k customers / 100 products / 10k orders / ~520k line items for the backfill demo (destructive rewrite; clears Mongo customers/products/orders and re-applies schema validators)
 - `./scripts/reset-postgres.sh` — recreate Postgres and restore the tiny init seed (use before contract tests after a bulk seed)
 - `mvn spring-boot:run` — start the shim on :8080
 - `mvn spring-boot:run -Dspring-boot.run.arguments=--backfill` — run the backfill job only (explicit; does not run on normal startup)
@@ -58,8 +62,11 @@
   `./scripts/dlq-seed-subset.sh <entity> <start_pk> <end_pk> localhost 15432`
 
 ## DLQ agent concurrency
-- Single-agent flock on `.dlq-agent.lock` — if held, the runner exits 0
+- Single-agent flock on `.dlq-agent.lock` (one PID file; no `.dlq-agent.lock.lock`) — if held, the runner exits 0
 - Processes only `MongoSchemaValidationException` and `BulkOperationException`
 - Skips a batch if an open PR already exists for branch
   `dlq-fix/<entity>-<startPk>-<endPk>`; other open DLQ PRs do not block different batches
+- Branch creation: `git fetch origin main` then
+  `git checkout -B dlq-fix/<entity>-<startPk>-<endPk> origin/main`
+  (always off remote `main`, never local `main`)
 - Does not mark DLQ rows resolved (post-merge / successful backfill is separate)

@@ -30,7 +30,8 @@ Target exception classes:
 - Never write to production Postgres (`:5432`) or Mongo (`:27017`).
 - Never set `backfill_dlq.resolved = true`.
 - Never commit to `main`.
-- Branch: `dlq-fix/<entity>-<startPk>-<endPk>`
+- Branch: `dlq-fix/<entity>-<startPk>-<endPk>` — create from **`origin/main`**
+  after `git fetch origin main` (do not base on local `main`).
 - Tear down: `docker compose -p dlq-<id> -f docker-compose.dlq.yml down -v`
 
 ## Steps
@@ -58,11 +59,13 @@ Target exception classes:
 6. **Re-test** in isolation (repeat backfill and/or targeted `mvn test`).
 7. **PR**
    ```bash
-   git checkout -b dlq-fix/<entity>-<startPk>-<endPk>
+   git fetch origin main
+   git checkout -B dlq-fix/<entity>-<startPk>-<endPk> origin/main
    git add -A && git commit -m "..."
    git push -u origin HEAD
    gh pr create --title "..." --body "..."
    ```
+   Always branch from **remote** `origin/main`, never from local `main`.
 8. **Report** write `reports/dlq/<id>.md` (root cause, repro, fix, evidence, PR URL).
 9. **Teardown** `docker compose -p dlq-<id> -f docker-compose.dlq.yml down -v`
 

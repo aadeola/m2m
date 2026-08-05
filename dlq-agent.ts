@@ -7,11 +7,10 @@
  */
 import { Agent, CursorAgentError } from "@cursor/sdk";
 import { execFile } from "node:child_process";
-import { promises as fs } from "node:fs";
+import { promises as fs, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import lockfile from "proper-lockfile";
 
 const execFileAsync = promisify(execFile);
 
@@ -98,6 +97,7 @@ ${
 - NEVER set backfill_dlq.resolved = true.
 - NEVER commit to main.
 - Branch name MUST be exactly: ${branch}
+- Create that branch from origin/main only (fetch first; do NOT base it on local main).
 - Tear down isolation when done: docker compose -p ${project} -f docker-compose.dlq.yml down -v
 
 ## Required steps
@@ -113,8 +113,9 @@ ${
    mvn -q spring-boot:run -Dspring-boot.run.arguments=--backfill
 5. Fix the Java code so documents satisfy the schema / bulk write succeeds (prefer transformer/embed fixes over weakening validators unless justified).
 6. Re-test the fix against the isolated stack (repeat step 4 and/or targeted mvn tests).
-7. Create branch ${branch}, commit, push, and open a PR:
-   git checkout -b ${branch}
+7. Create branch ${branch} from origin/main, commit, push, and open a PR:
+   git fetch origin main
+   git checkout -B ${branch} origin/main
    git push -u origin HEAD
    gh pr create --title "fix(dlq): ${entry.entity_name} ${entry.start_pk}-${entry.end_pk}" --body "..."
 8. Write reports/dlq/${entry.id}.md with root cause, repro, fix summary, test evidence, and PR URL.
@@ -167,12 +168,71 @@ async function runAgentForEntry(entry: DlqEntry, apiKey: string): Promise<"finis
   return result.status === "finished" ? "finished" : "error";
 }
 
-async function ensureLockFile(): Promise<void> {
+const LOCK_STALE_MS = 2 * 60 * 60 * 1000;
+
+function isPidAlive(pid: number): boolean {
   try {
-    await fs.writeFile(LOCK_PATH, "", { flag: "a" });
-  } catch {
-    // ignore
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
   }
+}
+
+/**
+ * Single-file mutex on .dlq-agent.lock (no proper-lockfile, no .lock dir).
+ * Returns a release fn, or null when another live agent holds the lock.
+ */
+async function acquireLock(): Promise<(() => Promise<void>) | null> {
+  const write = async () => {
+    await fs.writeFile(LOCK_PATH, JSON.stringify({ pid: process.pid, ts: Date.now() }), {
+      flag: "wx",
+    });
+  };
+
+  try {
+    await write();
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
+      throw err;
+    }
+    // Lock file exists — steal it only if the owner is dead or it is stale.
+    let stale = true;
+    try {
+      const raw = await fs.readFile(LOCK_PATH, "utf8");
+      const { pid, ts } = JSON.parse(raw) as { pid?: number; ts?: number };
+      const fresh = typeof ts === "number" && Date.now() - ts < LOCK_STALE_MS;
+      const ownerAlive = typeof pid === "number" && pid !== process.pid && isPidAlive(pid);
+      stale = !(fresh && ownerAlive);
+    } catch {
+      stale = true; // unreadable / malformed → treat as stale
+    }
+    if (!stale) {
+      return null;
+    }
+    await fs.rm(LOCK_PATH, { force: true });
+    await write();
+  }
+
+  const release = async () => {
+    try {
+      await fs.rm(LOCK_PATH, { force: true });
+    } catch {
+      // ignore
+    }
+  };
+
+  const onSignal = () => {
+    try {
+      rmSync(LOCK_PATH, { force: true });
+    } finally {
+      process.exit(1);
+    }
+  };
+  process.once("SIGINT", onSignal);
+  process.once("SIGTERM", onSignal);
+
+  return release;
 }
 
 async function main(): Promise<void> {
@@ -184,15 +244,8 @@ async function main(): Promise<void> {
 
   const baseUrl = process.env.DLQ_API_BASE ?? "http://localhost:8080";
 
-  await ensureLockFile();
-
-  let release: (() => Promise<void>) | undefined;
-  try {
-    release = await lockfile.lock(LOCK_PATH, {
-      stale: 2 * 60 * 60 * 1000,
-      realpath: false,
-    });
-  } catch {
+  const release = await acquireLock();
+  if (!release) {
     console.log("Another DLQ agent is running (.dlq-agent.lock held); exiting.");
     process.exit(0);
   }
