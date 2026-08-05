@@ -15,4 +15,7 @@ public interface CustomerJpaRepository extends JpaRepository<CustomerEntity, Int
     List<CustomerEntity> findByMigratedAtIsNull();
 
     List<CustomerEntity> findByMigratedAtIsNullOrderByCustomerIdAsc(org.springframework.data.domain.Pageable pageable);
+
+    List<CustomerEntity> findByMigratedAtIsNullAndCustomerIdGreaterThanOrderByCustomerIdAsc(
+            Integer customerId, org.springframework.data.domain.Pageable pageable);
 }

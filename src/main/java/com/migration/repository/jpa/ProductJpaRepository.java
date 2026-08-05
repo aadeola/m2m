@@ -15,4 +15,7 @@ public interface ProductJpaRepository extends JpaRepository<ProductEntity, Integ
     List<ProductEntity> findByMigratedAtIsNull();
 
     List<ProductEntity> findByMigratedAtIsNullOrderByProductIdAsc(org.springframework.data.domain.Pageable pageable);
+
+    List<ProductEntity> findByMigratedAtIsNullAndProductIdGreaterThanOrderByProductIdAsc(
+            Integer productId, org.springframework.data.domain.Pageable pageable);
 }

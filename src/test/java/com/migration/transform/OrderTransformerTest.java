@@ -46,6 +46,20 @@ class OrderTransformerTest {
     }
 
     @Test
+    void toDocument_fromPostgresEmbedsProductWithoutMigratedAt() {
+        OrderEntity order = orderEntity(100, 7);
+        LineItemEntity lineItem = lineItem(524368, 100, 37, 1, "19.99");
+        CustomerEntity customer = customer(7);
+        ProductEntity product = product(37, "Locked Widget", "19.99");
+
+        OrderDocument document = transformer.toDocument(order, List.of(lineItem), customer, Map.of(37, product));
+
+        assertEquals(1, document.getLineItems().size());
+        assertNotNull(document.getLineItems().getFirst().getProduct());
+        assertEquals(37, document.getLineItems().getFirst().getProduct().getProductId());
+    }
+
+    @Test
     void toResponse_fromPostgresEntity_matchesLegacyShape() {
         OrderEntity order = orderEntity(2, 7);
         LineItemEntity lineItem = lineItem(10, 2, 3, 2, "19.99");
@@ -151,7 +165,10 @@ class OrderTransformerTest {
     private static CustomerEntity customer(int customerId) {
         CustomerEntity customer = new CustomerEntity();
         customer.setCustomerId(customerId);
-        customer.setName("Alice");
+        customer.setFirstName("Alice");
+        customer.setLastName("Smith");
+        customer.setAccountNumber("CUS0001");
+        customer.setPhoneNumber("5550000001");
         customer.setEmail("alice@example.com");
         return customer;
     }

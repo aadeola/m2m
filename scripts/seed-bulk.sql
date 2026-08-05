@@ -1,7 +1,11 @@
 -- Bulk seed for multi-minute backfill demo.
 -- Destructive rewrite: truncates business tables and reloads a deterministic dataset.
--- Targets: 5k customers, 100 products, 50k orders, 5–100 line items per order (~2.6M rows).
+-- Targets: 1k customers, 100 products, 10k orders, 5–100 line items per order (~520k rows).
 -- Each order has exactly one customer_id; customers may have multiple orders.
+-- Poison isolation: every order EXCEPT order 100 references only "safe" products
+-- (1–30, 41–100). Order 100 is the sole order embedding products 31–40 (the batch
+-- the product-37 trigger forces into the DLQ), so exactly one order batch fails
+-- Mongo schema validation instead of cascading across the whole run.
 
 BEGIN;
 
@@ -49,7 +53,7 @@ SELECT
     'CUS' || lpad((i % 10000)::text, 4, '0'),
     '555' || lpad(((i - 1) % 10000000)::text, 7, '0'),
     'customer' || i || '@example.com'
-FROM generate_series(1, 5000) AS s(i);
+FROM generate_series(1, 1000) AS s(i);
 
 UPDATE customers SET email = 'customer100.example.com' WHERE customer_id = 100;
 UPDATE customers SET phone_number = '5551234'           WHERE customer_id = 101;
@@ -66,12 +70,14 @@ FROM generate_series(1, 100) AS s(i);
 
 INSERT INTO orders (customer_id, order_date, status, total_amount)
 SELECT
-    1 + ((i - 1) % 5000),
+    1 + ((i - 1) % 1000),
     DATE '2024-01-01' + ((i - 1) % 730),
     (ARRAY['PENDING', 'SHIPPED', 'DELIVERED', 'CANCELLED'])[1 + ((i - 1) % 4)],
     0.00
-FROM generate_series(1, 50000) AS s(i);
+FROM generate_series(1, 10000) AS s(i);
 
+-- All orders except order 100 reference only safe products (1–30, 41–100). The
+-- 90-wide modulo maps 0–29 -> 1–30 and 30–89 -> 41–100, skipping 31–40 entirely.
 INSERT INTO line_items (order_id, product_id, quantity, unit_price)
 SELECT
     o.order_id,
@@ -80,7 +86,19 @@ SELECT
     p.price
 FROM orders o
 CROSS JOIN LATERAL generate_series(1, 5 + (o.order_id % 96)) AS g(n)
-JOIN products p ON p.product_id = 1 + ((o.order_id + n) % 100);
+JOIN products p ON p.product_id =
+    CASE
+        WHEN ((o.order_id + n) % 90) < 30 THEN ((o.order_id + n) % 90) + 1
+        ELSE ((o.order_id + n) % 90) + 11
+    END
+WHERE o.order_id <> 100;
+
+-- Order 100 is the single poison order: it embeds every product in 31–40, so its
+-- document references products the trigger prevents from migrating.
+INSERT INTO line_items (order_id, product_id, quantity, unit_price)
+SELECT 100, p.product_id, 1, p.price
+FROM products p
+WHERE p.product_id BETWEEN 31 AND 40;
 
 UPDATE orders o
 SET total_amount = sub.total
@@ -102,8 +120,10 @@ UNION ALL
 SELECT 'line_items', COUNT(*) FROM line_items
 ORDER BY entity;
 
-SELECT p.product_id, p.name, COUNT(li.line_item_id) AS line_item_refs
-FROM products p
-LEFT JOIN line_items li ON li.product_id = p.product_id
-WHERE p.product_id = 37
-GROUP BY p.product_id, p.name;
+-- Poison isolation check: only order 100 should reference products 31–40.
+SELECT
+    COUNT(DISTINCT order_id) AS distinct_orders_referencing_31_40,
+    MIN(order_id) AS first_such_order,
+    MAX(order_id) AS last_such_order
+FROM line_items
+WHERE product_id BETWEEN 31 AND 40;

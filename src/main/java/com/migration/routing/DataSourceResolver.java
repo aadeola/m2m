@@ -1,6 +1,5 @@
 package com.migration.routing;
 
-import com.migration.debug.AgentDebugLog;
 import com.migration.repository.jpa.CustomerJpaRepository;
 import com.migration.repository.jpa.OrderJpaRepository;
 import com.migration.repository.jpa.ProductJpaRepository;
@@ -26,10 +25,6 @@ public class DataSourceResolver {
 
     public DataSource resolveDataSource(EntityType entityType, String id) {
         if (isObjectId(id)) {
-            // #region agent log
-            AgentDebugLog.log("C", "DataSourceResolver.resolveDataSource", "route decision",
-                    "{\"entityType\":\"" + entityType + "\",\"id\":\"" + id + "\",\"reason\":\"objectId\",\"source\":\"MONGO\"}");
-            // #endregion
             return DataSource.MONGO;
         }
         if (!isNumericId(id)) {
@@ -41,13 +36,7 @@ public class DataSourceResolver {
             case PRODUCT -> productJpaRepository.isMigrated(numericId);
             case ORDER -> orderJpaRepository.isMigrated(numericId);
         };
-        DataSource source = migrated ? DataSource.MONGO : DataSource.POSTGRES;
-        // #region agent log
-        AgentDebugLog.log("A,B", "DataSourceResolver.resolveDataSource", "route decision",
-                "{\"entityType\":\"" + entityType + "\",\"id\":\"" + id + "\",\"numericId\":" + numericId
-                        + ",\"isMigrated\":" + migrated + ",\"source\":\"" + source + "\"}");
-        // #endregion
-        return source;
+        return migrated ? DataSource.MONGO : DataSource.POSTGRES;
     }
 
     public static boolean isObjectId(String id) {

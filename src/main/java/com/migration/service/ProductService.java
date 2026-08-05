@@ -1,6 +1,5 @@
 package com.migration.service;
 
-import com.migration.debug.AgentDebugLog;
 import com.migration.dto.ProductResponse;
 import com.migration.exception.RecordNotFoundException;
 import com.migration.model.jpa.ProductEntity;
@@ -34,10 +33,6 @@ public class ProductService {
 
     public ProductResponse getProductById(String id) {
         DataSource dataSource = dataSourceResolver.resolveDataSource(EntityType.PRODUCT, id);
-        // #region agent log
-        AgentDebugLog.log("C,D", "ProductService.getProductById", "read branch",
-                "{\"id\":\"" + id + "\",\"dataSource\":\"" + dataSource + "\"}");
-        // #endregion
         if (dataSource == DataSource.POSTGRES) {
             ProductEntity entity = productJpaRepository.findById(Integer.parseInt(id))
                     .orElseThrow(() -> new RecordNotFoundException("Product not found: " + id));

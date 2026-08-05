@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Load the bulk Postgres dataset for a multi-minute backfill demo.
+# Load the bulk Postgres dataset for a backfill demo.
 #
 # Explicit opt-in: docker compose up alone keeps the tiny init seed.
 # Idempotent: each run TRUNCATEs and rewrites the same deterministic rows
-# (5k customers / 100 products / 50k orders / ~2.6M line items).
+# (1k customers / 100 products / 10k orders / ~520k line items).
 #
 # Postgres PKs restart at 1 each run and the backfill reuses them as Mongo
 # _id values, so this script also drops the Mongo customers/products/orders
@@ -33,6 +33,12 @@ if docker compose ps --status running 2>/dev/null | grep -q mongo; then
     const target = db.getSiblingDB('${MONGO_DB}');
     ['customers', 'products', 'orders'].forEach(c => target[c].drop());
   "
+  # Dropping a collection also drops its $jsonSchema validator. mongo-init.js
+  # only runs at container init, so re-apply the validators here — otherwise the
+  # backfill re-creates the collections unvalidated and the poison order 100
+  # silently passes instead of raising error 121 for the DLQ.
+  echo "Re-applying Mongo schema validators (seeds/mongo-init.js)..."
+  docker compose exec -T mongo mongosh --quiet < "$ROOT/seeds/mongo-init.js"
 else
   echo "WARNING: Mongo is not running — skipping Mongo cleanup."
   echo "         Start it (docker compose up -d) and re-run to avoid orphaned"

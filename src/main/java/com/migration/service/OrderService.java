@@ -1,6 +1,5 @@
 package com.migration.service;
 
-import com.migration.debug.AgentDebugLog;
 import com.migration.dto.CreateOrderRequest;
 import com.migration.dto.OrderResponse;
 import com.migration.dto.OrderStatusResponse;
@@ -59,10 +58,6 @@ public class OrderService {
 
     public OrderResponse getOrderById(String id) {
         DataSource dataSource = dataSourceResolver.resolveDataSource(EntityType.ORDER, id);
-        // #region agent log
-        AgentDebugLog.log("C,D", "OrderService.getOrderById", "read branch",
-                "{\"id\":\"" + id + "\",\"dataSource\":\"" + dataSource + "\"}");
-        // #endregion
         if (dataSource == DataSource.POSTGRES) {
             return loadPostgresOrder(Integer.parseInt(id), true);
         }
@@ -152,12 +147,6 @@ public class OrderService {
         List<OrderDocument> mongoOrders = customerId == null
                 ? orderMongoRepository.findAll()
                 : orderMongoRepository.findByCustomerId(customerId);
-        // #region agent log
-        AgentDebugLog.log("E", "OrderService.mergeOrderLists", "list merge counts",
-                "{\"customerId\":" + (customerId == null ? "null" : customerId)
-                        + ",\"postgresCount\":" + postgresOrders.size()
-                        + ",\"mongoCount\":" + mongoOrders.size() + "}");
-        // #endregion
         for (OrderDocument document : mongoOrders) {
             responses.add(orderTransformer.toResponse(document, false));
         }

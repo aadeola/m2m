@@ -17,4 +17,7 @@ public interface OrderJpaRepository extends JpaRepository<OrderEntity, Integer> 
     List<OrderEntity> findByMigratedAtIsNullAndCustomerId(Integer customerId);
 
     List<OrderEntity> findByMigratedAtIsNullOrderByOrderIdAsc(org.springframework.data.domain.Pageable pageable);
+
+    List<OrderEntity> findByMigratedAtIsNullAndOrderIdGreaterThanOrderByOrderIdAsc(
+            Integer orderId, org.springframework.data.domain.Pageable pageable);
 }

@@ -1,5 +1,6 @@
 package com.migration.service;
 
+import com.migration.exception.MongoSchemaValidationException;
 import com.migration.exception.MongoSchemaValidationFailures;
 import com.migration.model.jpa.BackfillCheckpointEntity;
 import com.migration.model.jpa.BackfillDlqEntity;
@@ -28,7 +29,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.BulkOperations;
 import org.springframework.data.mongodb.core.FindAndReplaceOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -105,25 +105,28 @@ public class BackfillService {
 
     private void migrateCustomers() {
         int totalMigrated = 0;
+        int cursor = startingCursor(CUSTOMERS);
         List<CustomerEntity> batch;
         do {
-            batch = customerJpaRepository.findByMigratedAtIsNullOrderByCustomerIdAsc(
-                    PageRequest.of(0, batchSize, Sort.by("customerId")));
+            batch = customerJpaRepository.findByMigratedAtIsNullAndCustomerIdGreaterThanOrderByCustomerIdAsc(
+                    cursor, PageRequest.of(0, batchSize));
             if (batch.isEmpty()) {
                 break;
             }
             final List<CustomerEntity> currentBatch = batch;
+            int firstPk = currentBatch.get(0).getCustomerId();
+            int lastPk = currentBatch.get(currentBatch.size() - 1).getCustomerId();
             try {
-                totalMigrated += transactionTemplate.execute(status -> migrateCustomerBatch(currentBatch));
+                int migratedInBatch = transactionTemplate.execute(status -> migrateCustomerBatch(currentBatch));
+                totalMigrated += migratedInBatch;
+                log.info("Migrated {} customers in batch pk {}-{}; {} customers total",
+                        migratedInBatch, firstPk, lastPk, totalMigrated);
             } catch (Exception ex) {
-                recordFailure(
-                        CUSTOMERS,
-                        currentBatch.get(0).getCustomerId(),
-                        currentBatch.get(currentBatch.size() - 1).getCustomerId(),
-                        ex);
-                log.error("Customers batch failed; halting customers migration for this run", ex);
-                return;
+                recordFailure(CUSTOMERS, firstPk, lastPk, ex);
+                advanceCheckpointPastFailure(CUSTOMERS, lastPk);
+                logBatchFailure("CustomerDocument", firstPk, lastPk, ex);
             }
+            cursor = lastPk;
         } while (batch.size() == batchSize);
         log.info("Migrated {} customers", totalMigrated);
     }
@@ -148,25 +151,28 @@ public class BackfillService {
 
     private void migrateProducts() {
         int totalMigrated = 0;
+        int cursor = startingCursor(PRODUCTS);
         List<ProductEntity> batch;
         do {
-            batch = productJpaRepository.findByMigratedAtIsNullOrderByProductIdAsc(
-                    PageRequest.of(0, batchSize, Sort.by("productId")));
+            batch = productJpaRepository.findByMigratedAtIsNullAndProductIdGreaterThanOrderByProductIdAsc(
+                    cursor, PageRequest.of(0, batchSize));
             if (batch.isEmpty()) {
                 break;
             }
             final List<ProductEntity> currentBatch = batch;
+            int firstPk = currentBatch.get(0).getProductId();
+            int lastPk = currentBatch.get(currentBatch.size() - 1).getProductId();
             try {
-                totalMigrated += transactionTemplate.execute(status -> migrateProductBatch(currentBatch));
+                int migratedInBatch = transactionTemplate.execute(status -> migrateProductBatch(currentBatch));
+                totalMigrated += migratedInBatch;
+                log.info("Migrated {} products in batch pk {}-{}; {} products total",
+                        migratedInBatch, firstPk, lastPk, totalMigrated);
             } catch (Exception ex) {
-                recordFailure(
-                        PRODUCTS,
-                        currentBatch.get(0).getProductId(),
-                        currentBatch.get(currentBatch.size() - 1).getProductId(),
-                        ex);
-                log.error("Products batch failed; halting products migration for this run", ex);
-                return;
+                recordFailure(PRODUCTS, firstPk, lastPk, ex);
+                advanceCheckpointPastFailure(PRODUCTS, lastPk);
+                logBatchFailure("ProductDocument", firstPk, lastPk, ex);
             }
+            cursor = lastPk;
         } while (batch.size() == batchSize);
         log.info("Migrated {} products", totalMigrated);
     }
@@ -190,25 +196,28 @@ public class BackfillService {
 
     private void migrateOrders() {
         int totalMigrated = 0;
+        int cursor = startingCursor(ORDERS);
         List<OrderEntity> batch;
         do {
-            batch = orderJpaRepository.findByMigratedAtIsNullOrderByOrderIdAsc(
-                    PageRequest.of(0, batchSize, Sort.by("orderId")));
+            batch = orderJpaRepository.findByMigratedAtIsNullAndOrderIdGreaterThanOrderByOrderIdAsc(
+                    cursor, PageRequest.of(0, batchSize));
             if (batch.isEmpty()) {
                 break;
             }
             final List<OrderEntity> currentBatch = batch;
+            int firstPk = currentBatch.get(0).getOrderId();
+            int lastPk = currentBatch.get(currentBatch.size() - 1).getOrderId();
             try {
-                totalMigrated += transactionTemplate.execute(status -> migrateOrderBatch(currentBatch));
+                int migratedInBatch = transactionTemplate.execute(status -> migrateOrderBatch(currentBatch));
+                totalMigrated += migratedInBatch;
+                log.info("Migrated {} orders in batch pk {}-{}; {} orders total",
+                        migratedInBatch, firstPk, lastPk, totalMigrated);
             } catch (Exception ex) {
-                recordFailure(
-                        ORDERS,
-                        currentBatch.get(0).getOrderId(),
-                        currentBatch.get(currentBatch.size() - 1).getOrderId(),
-                        ex);
-                log.error("Orders batch failed; halting orders migration for this run", ex);
-                return;
+                recordFailure(ORDERS, firstPk, lastPk, ex);
+                advanceCheckpointPastFailure(ORDERS, lastPk);
+                logBatchFailure("OrderDocument", firstPk, lastPk, ex);
             }
+            cursor = lastPk;
         } while (batch.size() == batchSize);
         log.info("Migrated {} orders", totalMigrated);
     }
@@ -298,5 +307,25 @@ public class BackfillService {
                 .orElseThrow(() -> new IllegalStateException("Missing checkpoint for " + entityName));
         checkpoint.setLastProcessedPk(Math.max(checkpoint.getLastProcessedPk(), lastProcessedPk));
         checkpointRepository.save(checkpoint);
+    }
+
+    private int startingCursor(String entityName) {
+        return checkpointRepository.findById(entityName)
+                .map(BackfillCheckpointEntity::getLastProcessedPk)
+                .orElse(0);
+    }
+
+    private void advanceCheckpointPastFailure(String entityName, int lastProcessedPk) {
+        requiresNewTransactionTemplate.executeWithoutResult(status -> updateCheckpoint(entityName, lastProcessedPk));
+    }
+
+    private void logBatchFailure(String documentType, int firstPk, int lastPk, Exception ex) {
+        if (ex instanceof MongoSchemaValidationException) {
+            log.error("MongoDB schema validation failed writing {}, pk {}-{}; recorded to DLQ and continuing",
+                    documentType, firstPk, lastPk);
+        } else {
+            log.error("{} batch pk {}-{} failed ({}); recorded to DLQ and continuing",
+                    documentType, firstPk, lastPk, ex.getClass().getSimpleName());
+        }
     }
 }
