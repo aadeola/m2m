@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RDBMS → MongoDB Migration Shim</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --border: #2a2f3a;
+    --text: #e8eaed;
+    --muted: #9aa0a6;
+    --accent: #6b9eff;
+    --warn: #e6b84d;
+    --ok: #6bcf8e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.45;
+  }
+  .shell {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 20px 20px 40px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .nav .meta { color: var(--muted); font-size: 13px; margin-right: auto; }
+  .pill {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .pill.active { background: #243044; color: var(--text); border-color: #3a4a66; }
+  .stage {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    min-height: 460px;
+  }
+  h1 { font-size: 28px; margin: 0 0 8px; font-weight: 650; }
+  h2 { font-size: 18px; margin: 0 0 8px; }
+  h3 { font-size: 14px; margin: 0 0 4px; }
+  p { margin: 0 0 12px; color: var(--muted); }
+  .eyebrow { font-size: 12px; color: var(--muted); letter-spacing: 0.02em; margin-bottom: 6px; }
+  .grid { display: grid; gap: 12px; }
+  .g2 { grid-template-columns: 1fr 1fr; }
+  .g3 { grid-template-columns: 1fr 1fr 1fr; }
+  .g4 { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 720px) {
+    .g2, .g3, .g4 { grid-template-columns: 1fr; }
+  }
+  .card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    background: #12151b;
+  }
+  .card .label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+  }
+  .stat .value { font-size: 22px; font-weight: 650; }
+  .stat .caption { font-size: 12px; color: var(--muted); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin: 12px 0;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th { color: var(--muted); font-weight: 550; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.92em;
+    background: #222733;
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+  .callout {
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-top: 12px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .callout.warn { border-left-color: var(--warn); }
+  .callout.ok { border-left-color: var(--ok); }
+  .callout strong { color: var(--text); display: block; margin-bottom: 4px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .tag {
+    border: 1px solid var(--border);
+    background: #243044;
+    color: var(--text);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+  .footer {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  button.btn {
+    border: 1px solid var(--border);
+    background: #1c2230;
+    color: var(--text);
+    border-radius: 6px;
+    padding: 7px 12px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  button.btn.primary { background: var(--accent); color: #0b1220; border-color: transparent; font-weight: 600; }
+  button.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .stack { display: flex; flex-direction: column; gap: 10px; }
+  .flow {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    font-size: 13px; margin: 10px 0 14px;
+  }
+  .node {
+    border: 1px solid var(--border);
+    background: #12151b;
+    padding: 8px 10px;
+    border-radius: 6px;
+  }
+  .node.hot { border-color: var(--accent); }
+  .arrow { color: var(--muted); }
+  .hidden { display: none; }
+  .foot-meta { margin-left: auto; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <div class="nav">
+      <div class="meta"><strong>Migration Shim</strong> · <span id="counter"></span></div>
+      <button class="pill" data-go="0">Title</button>
+      <button class="pill" data-go="1">Problem</button>
+      <button class="pill" data-go="2">Solution</button>
+      <button class="pill" data-go="3">Architecture</button>
+      <button class="pill" data-go="4">Design</button>
+      <button class="pill" data-go="5">Classes</button>
+      <button class="pill" data-go="6">Commands</button>
+      <button class="pill" data-go="7">Agents & DLQ</button>
+    </div>
+
+    <div class="stage" id="stage"></div>
+
+    <div class="footer">
+      <button class="btn" id="prev">Previous</button>
+      <button class="btn primary" id="next">Next</button>
+      <div class="foot-meta">Java 21 · Spring Boot 3 · Postgres 16 · MongoDB 7</div>
+    </div>
+  </div>
+
+  <template id="s0">
+    <div class="eyebrow">Cursor Field Engineering · Problem Space A</div>
+    <h1>RDBMS → MongoDB Migration Shim</h1>
+    <p>Keep legacy clients working while migrating customers, products, and orders from Postgres to denormalized MongoDB documents — with dual-write routing, shared transformers, and agent-driven contract coverage.</p>
+    <div class="grid g4">
+      <div class="card stat"><div class="value">3</div><div class="caption">Entities migrated</div></div>
+      <div class="card stat"><div class="value">Dual</div><div class="caption">DB routing window</div></div>
+      <div class="card stat"><div class="value">:8080</div><div class="caption">Shim REST port</div></div>
+      <div class="card stat"><div class="value">Embed</div><div class="caption">Doc design bias</div></div>
+    </div>
+    <div class="tags">
+      <span class="tag">Shim API</span>
+      <span class="tag">Backfill job</span>
+      <span class="tag">Contract tests</span>
+      <span class="tag">DLQ triage agent</span>
+    </div>
+    <div class="callout"><strong>During the migration window</strong>Legacy clients keep the same REST shape. The shim decides Postgres vs Mongo per record via ID format + <code>migrated_at</code>, while a background backfill promotes existing rows in dependency order.</div>
+  </template>
+
+  <template id="s1">
+    <h1>The problem</h1>
+    <p>A business-critical service runs on Postgres. The org is moving to MongoDB for flexibility and scale — but the data model (and therefore the API contract) changes with it.</p>
+    <div class="grid g2">
+      <div class="card">
+        <div class="label">Relational today</div>
+        <div><code>customers</code>, <code>products</code>, <code>orders</code>, <code>line_items</code></div>
+        <p style="margin-top:8px">Joins, foreign keys, normalized rows. Clients already depend on the legacy REST field names and shapes.</p>
+      </div>
+      <div class="card">
+        <div class="label">Document target</div>
+        <div>Denormalized collections; line items embedded in orders</div>
+        <p style="margin-top:8px">Pointing clients at a new connection string is not enough — the read/write contract has to stay stable during the cutover window.</p>
+      </div>
+    </div>
+    <div class="callout warn"><strong>Migration window risk</strong>Live traffic continues while historical data backfills. Without a virtualization layer, clients would see broken contracts, split-brain reads, or a big-bang cutover.</div>
+  </template>
+
+  <template id="s2">
+    <h1>The solution</h1>
+    <p>Four coordinated pieces ship together so clients never notice which database is authoritative for a given record.</p>
+    <div class="grid g2">
+      <div class="card"><div class="label">1. Shim layer · Runtime</div><p style="margin:0">Java 21 + Spring Boot 3 on <code>:8080</code>. Preserves legacy REST responses for customers, products, and orders — reads and writes — routing each record to Postgres or Mongo.</p></div>
+      <div class="card"><div class="label">2. Backfill job · Batch</div><p style="margin:0">Explicit <code>--backfill</code> runner migrates existing rows in order: customers → products → orders. Shares the same transformers as the live write path.</p></div>
+      <div class="card"><div class="label">3. Contract tests · Proof</div><p style="margin:0">One test per inventory endpoint, covering both migrated and unmigrated records so response shape stays identical either way.</p></div>
+      <div class="card"><div class="label">4. Coverage + DLQ agents</div><p style="margin:0">Coverage checks every <code>inventory.json</code> call site. DLQ triage reproduces poison batches in an isolated stack and opens fix PRs.</p></div>
+    </div>
+  </template>
+
+  <template id="s3">
+    <h1>Architecture &amp; routing</h1>
+    <p>Clients hit the shim. Routing uses ID shape first, then <code>migrated_at</code> for legacy numeric PKs.</p>
+    <div class="flow">
+      <span class="node">Legacy clients</span><span class="arrow">→</span>
+      <span class="node hot">Shim :8080</span><span class="arrow">→</span>
+      <span class="node hot">DataSourceResolver</span><span class="arrow">→</span>
+      <span class="node">Postgres</span>
+      <span class="arrow">/</span>
+      <span class="node">MongoDB</span>
+    </div>
+    <div class="flow">
+      <span class="node">BackfillJob</span><span class="arrow">→</span>
+      <span class="node">Transformers</span><span class="arrow">→</span>
+      <span class="node">MongoDB</span>
+      <span class="arrow">(shared with shim write path)</span>
+    </div>
+    <table>
+      <thead><tr><th>ID shape</th><th>Meaning</th><th>Route</th></tr></thead>
+      <tbody>
+        <tr><td>24-char hex ObjectId</td><td>Born in Mongo after migration started</td><td>Always Mongo</td></tr>
+        <tr><td>Numeric Postgres PK</td><td>Legacy-origin record</td><td>Mongo if <code>migrated_at</code> set, else Postgres</td></tr>
+      </tbody>
+    </table>
+    <div class="callout"><strong>Checkpoint ≠ migrated_at</strong>Backfill resumability (last processed PK) is separate from whether a record is safe to read from Mongo. Do not conflate the two.</div>
+  </template>
+
+  <template id="s4">
+    <h1>Design considerations</h1>
+    <p>Conventions that keep dual-write safe and the document model honest.</p>
+    <div class="grid g2">
+      <div class="stack">
+        <div><h3>Contract fidelity</h3><p>Shim endpoints must match the legacy response shape exactly — use Jackson <code>@JsonProperty</code> where Java names would diverge.</p></div>
+        <div><h3>One transform path</h3><p>Never write Mongo documents outside the shim service layer or the backfill job. Shared transformers are the single source of truth.</p></div>
+        <div><h3>Embed over lookup</h3><p>Prefer embedding. <code>$lookup</code> is an anti-pattern here unless embedding genuinely cannot fit.</p></div>
+      </div>
+      <div class="stack">
+        <div><h3>Backfill resilience</h3><p>Failed batches land in <code>backfill_dlq</code>; the job advances past the poison range. Schema validation (code 121) → <code>MongoSchemaValidationException</code>.</p></div>
+        <div><h3>Dependency order</h3><p>customers → products → orders. Line items are never a standalone Mongo collection.</p></div>
+        <div><h3>Inventory as truth</h3><p>Discovery output <code>inventory.json</code> defines what needs a contract test. Admin DLQ APIs stay out of that inventory.</p></div>
+      </div>
+    </div>
+  </template>
+
+  <template id="s5">
+    <h1>Important classes</h1>
+    <p>Package layout: controller / service / repository (jpa + mongo) / transform / dto / routing / job.</p>
+    <table>
+      <thead><tr><th>Class</th><th>Role</th></tr></thead>
+      <tbody>
+        <tr><td><code>DataSourceResolver</code></td><td>ObjectId → Mongo; numeric PK → migrated_at check → Postgres or Mongo</td></tr>
+        <tr><td><code>OrderTransformer</code></td><td>Shared PG→document and document→legacy response mapping (also Customer/Product)</td></tr>
+        <tr><td><code>OrderService</code></td><td>Read/write orchestration; routes via resolver; no third Mongo write path</td></tr>
+        <tr><td><code>BackfillJob</code></td><td>ApplicationRunner; runs only when <code>--backfill</code> is passed</td></tr>
+        <tr><td><code>BackfillService</code></td><td>Batched migrate + checkpoint + DLQ; customers→products→orders</td></tr>
+        <tr><td><code>*Controller</code></td><td>Customer / Product / Order preserve legacy routes; BackfillDlqController is admin-only</td></tr>
+      </tbody>
+    </table>
+    <div class="grid g3">
+      <div class="card"><div class="label">JPA models</div>CustomerEntity, ProductEntity, OrderEntity, LineItemEntity, BackfillCheckpointEntity, BackfillDlqEntity</div>
+      <div class="card"><div class="label">Mongo models</div>CustomerDocument, ProductDocument, OrderDocument + EmbeddedLineItem / EmbeddedProduct / EmbeddedCustomerSummary</div>
+      <div class="card"><div class="label">Exceptions</div>MongoSchemaValidationException, RecordNotFoundException — DLQ triage targets schema + bulk failures</div>
+    </div>
+  </template>
+
+  <template id="s6">
+    <h1>Key commands</h1>
+    <p>Local zero-hosting stack: Docker for databases, Maven for the shim, npm scripts for agent runners.</p>
+    <table>
+      <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>docker-compose up -d</code></td><td>Start Postgres + Mongo</td></tr>
+        <tr><td><code>./scripts/verify-phase0.sh</code></td><td>Validate Phase 0 infrastructure</td></tr>
+        <tr><td><code>./scripts/seed-bulk.sh</code></td><td>1k customers / 100 products / 10k orders; resets Mongo validators</td></tr>
+        <tr><td><code>./scripts/reset-postgres.sh</code></td><td>Tiny init seed — use before contract tests after bulk seed</td></tr>
+        <tr><td><code>mvn spring-boot:run</code></td><td>Start shim on :8080 (no backfill)</td></tr>
+        <tr><td><code>mvn spring-boot:run -Dspring-boot.run.arguments=--backfill</code></td><td>Run backfill job only</td></tr>
+        <tr><td><code>mvn test</code></td><td>Full suite; or <code>-Dtest=*ContractTest</code></td></tr>
+        <tr><td><code>npm run coverage-check</code></td><td>Inventory call-site coverage via Cursor SDK</td></tr>
+        <tr><td><code>npm run dlq</code></td><td>Poll <code>/admin/backfill/dlq</code> and triage via Cursor SDK</td></tr>
+      </tbody>
+    </table>
+  </template>
+
+  <template id="s7">
+    <h1>Agents &amp; DLQ triage</h1>
+    <p>Cursor agents drive discovery, generation, coverage, and poison-batch repair without writing to prod or marking DLQ rows resolved.</p>
+    <div class="grid g2">
+      <div>
+        <h2>Agent pipeline</h2>
+        <table>
+          <thead><tr><th>Stage</th><th>Output</th></tr></thead>
+          <tbody>
+            <tr><td>Discovery</td><td>inventory.json call sites</td></tr>
+            <tr><td>Shim generation</td><td>Controllers + services</td></tr>
+            <tr><td>Contract tests</td><td>Migrated + unmigrated cases</td></tr>
+            <tr><td>Coverage check</td><td>No inventory gaps before cutover</td></tr>
+            <tr><td>DLQ triage</td><td>Isolated reproduce → fix PR</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="stack">
+        <h2>DLQ safety rails</h2>
+        <p>Single-agent flock on <code>.dlq-agent.lock</code>. Processes only <code>MongoSchemaValidationException</code> and <code>BulkOperationException</code>.</p>
+        <p>Branch from <code>origin/main</code>: <code>dlq-fix/&lt;entity&gt;-&lt;startPk&gt;-&lt;endPk&gt;</code>. Skip if that PR is already open.</p>
+        <div class="callout ok"><strong>Isolated stack</strong><code>docker-compose.dlq.yml</code> — Postgres <code>15432</code>, Mongo <code>37017</code>. Seed with <code>./scripts/dlq-seed-subset.sh</code>.</div>
+      </div>
+    </div>
+    <div class="callout" style="margin-top:16px"><strong>Takeaway</strong>Dual-database routing + shared transformers + inventory-backed contracts let you migrate without rewriting clients — and poison batches become automated fix PRs instead of stopped pipelines.</div>
+  </template>
+
+<script>
+  const total = 8;
+  let i = 0;
+  const stage = document.getElementById("stage");
+  const counter = document.getElementById("counter");
+  const pills = [...document.querySelectorAll(".pill[data-go]")];
+  const prev = document.getElementById("prev");
+  const next = document.getElementById("next");
+
+  function render() {
+    const tpl = document.getElementById("s" + i);
+    stage.innerHTML = "";
+    stage.appendChild(tpl.content.cloneNode(true));
+    counter.textContent = (i + 1) + " / " + total;
+    pills.forEach((p) => p.classList.toggle("active", Number(p.dataset.go) === i));
+    prev.disabled = i === 0;
+    next.disabled = i === total - 1;
+  }
+
+  pills.forEach((p) => p.addEventListener("click", () => { i = Number(p.dataset.go); render(); }));
+  prev.addEventListener("click", () => { i = Math.max(0, i - 1); render(); });
+  next.addEventListener("click", () => { i = Math.min(total - 1, i + 1); render(); });
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight" || e.key === " ") { e.preventDefault(); i = Math.min(total - 1, i + 1); render(); }
+    if (e.key === "ArrowLeft") { e.preventDefault(); i = Math.max(0, i - 1); render(); }
+  });
+  render();
+</script>
+</body>
+</html>
