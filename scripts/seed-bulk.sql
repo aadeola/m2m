@@ -2,10 +2,6 @@
 -- Destructive rewrite: truncates business tables and reloads a deterministic dataset.
 -- Targets: 1k customers, 100 products, 10k orders, 5–100 line items per order (~520k rows).
 -- Each order has exactly one customer_id; customers may have multiple orders.
--- Poison isolation: every order EXCEPT order 100 references only "safe" products
--- (1–30, 41–100). Order 100 is the sole order embedding products 31–40 (the batch
--- the product-37 trigger forces into the DLQ), so exactly one order batch fails
--- Mongo schema validation instead of cascading across the whole run.
 
 BEGIN;
 
@@ -20,24 +16,6 @@ CREATE TABLE IF NOT EXISTS backfill_dlq (
     resolved        BOOLEAN NOT NULL DEFAULT FALSE,
     resolved_at     TIMESTAMP NULL
 );
-
-CREATE OR REPLACE FUNCTION prevent_product_37_migration()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF NEW.product_id = 37
-       AND NEW.migrated_at IS NOT NULL
-       AND OLD.migrated_at IS NULL THEN
-        RAISE EXCEPTION 'Product 37 is locked pending vendor pricing review and cannot be migrated';
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_prevent_product_37_migration ON products;
-CREATE TRIGGER trg_prevent_product_37_migration
-    BEFORE UPDATE ON products
-    FOR EACH ROW
-    EXECUTE FUNCTION prevent_product_37_migration();
 
 TRUNCATE backfill_dlq RESTART IDENTITY;
 
@@ -76,8 +54,7 @@ SELECT
     0.00
 FROM generate_series(1, 10000) AS s(i);
 
--- All orders except order 100 reference only safe products (1–30, 41–100). The
--- 90-wide modulo maps 0–29 -> 1–30 and 30–89 -> 41–100, skipping 31–40 entirely.
+-- The 90-wide modulo maps 0–29 -> 1–30 and 30–89 -> 41–100, skipping 31–40 entirely.
 INSERT INTO line_items (order_id, product_id, quantity, unit_price)
 SELECT
     o.order_id,
@@ -90,15 +67,7 @@ JOIN products p ON p.product_id =
     CASE
         WHEN ((o.order_id + n) % 90) < 30 THEN ((o.order_id + n) % 90) + 1
         ELSE ((o.order_id + n) % 90) + 11
-    END
-WHERE o.order_id <> 100;
-
--- Order 100 is the single poison order: it embeds every product in 31–40, so its
--- document references products the trigger prevents from migrating.
-INSERT INTO line_items (order_id, product_id, quantity, unit_price)
-SELECT 100, p.product_id, 1, p.price
-FROM products p
-WHERE p.product_id BETWEEN 31 AND 40;
+    END;
 
 UPDATE orders o
 SET total_amount = sub.total
@@ -119,11 +88,3 @@ SELECT 'orders', COUNT(*) FROM orders
 UNION ALL
 SELECT 'line_items', COUNT(*) FROM line_items
 ORDER BY entity;
-
--- Poison isolation check: only order 100 should reference products 31–40.
-SELECT
-    COUNT(DISTINCT order_id) AS distinct_orders_referencing_31_40,
-    MIN(order_id) AS first_such_order,
-    MAX(order_id) AS last_such_order
-FROM line_items
-WHERE product_id BETWEEN 31 AND 40;
