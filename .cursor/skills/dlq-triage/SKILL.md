@@ -58,8 +58,12 @@ Target exception classes:
    ```bash
    ./scripts/dlq-seed-subset.sh <entity> <start_pk> <end_pk> localhost 15432
    ```
-4. **Reproduce** with env overrides only (never point at prod):
+4. **Reproduce** with env overrides only (never point at prod). Always set
+   `SERVER_PORT` too — the default (8080) is likely already bound by someone
+   else's live shim on this host, and binding it here fights over / can kill
+   that unrelated process:
    ```bash
+   SERVER_PORT=18080 \
    SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15432/migration \
    SPRING_DATA_MONGODB_URI=mongodb://localhost:37017/mydb \
    mvn -q spring-boot:run -Dspring-boot.run.arguments=--backfill

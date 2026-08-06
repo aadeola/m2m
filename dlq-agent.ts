@@ -176,7 +176,11 @@ affect their branch or files. Do NOT run \`git checkout\`, \`git switch\`, or
    Wait until healthy. Host ports: Postgres 15432, Mongo 37017.
 3. Seed the failing slice from prod into isolation (rows + prod triggers):
    ./scripts/dlq-seed-subset.sh ${entry.entity_name} ${entry.start_pk} ${entry.end_pk} localhost 15432
-4. Reproduce with backfill against isolation only:
+4. Reproduce with backfill against isolation only. ALWAYS set SERVER_PORT to
+   an unused port (e.g. 18080) — the default (8080, from application.properties)
+   is very likely already bound by someone else's live shim on this host, and
+   binding it here would fight over / kill that unrelated process:
+   SERVER_PORT=18080 \\
    SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:15432/migration \\
    SPRING_DATA_MONGODB_URI=mongodb://localhost:37017/mydb \\
    mvn -q spring-boot:run -Dspring-boot.run.arguments=--backfill

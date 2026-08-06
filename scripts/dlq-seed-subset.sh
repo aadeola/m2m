@@ -49,6 +49,47 @@ target_psql() {
     psql -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 "$@"
 }
 
+source_psql() {
+  docker exec -i "$SOURCE_CONTAINER" psql -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 "$@"
+}
+
+# Mirror every user-defined trigger (+ the function it calls) from prod into
+# isolation, generically via catalog introspection — NOT hardcoded to any one
+# trigger name. Without this, a backfill that only fails in prod because of a
+# prod-only trigger (e.g. a poison-data guard) would silently succeed here,
+# and "reproduce in isolation" would reproduce nothing.
+copy_triggers_and_functions() {
+  echo "Mirroring user-defined trigger functions and triggers from ${SOURCE_CONTAINER} into isolation..."
+
+  local funcs
+  funcs="$(source_psql -Atq -c "
+    SELECT string_agg(pg_get_functiondef(p.oid), E';\n') || ';'
+    FROM pg_proc p
+    JOIN pg_namespace n ON p.pronamespace = n.oid
+    WHERE p.oid IN (SELECT DISTINCT tgfoid FROM pg_trigger WHERE NOT tgisinternal)
+      AND n.nspname = 'public'
+  ")"
+  if [[ -n "${funcs// }" && "$funcs" != ";" ]]; then
+    target_psql -c "$funcs"
+  fi
+
+  local triggers
+  triggers="$(source_psql -Atq -c "
+    SELECT string_agg(
+      'DROP TRIGGER IF EXISTS ' || t.tgname || ' ON ' || c.relname || E';\n'
+      || pg_get_triggerdef(t.oid) || ';',
+      E'\n'
+    )
+    FROM pg_trigger t
+    JOIN pg_class c ON t.tgrelid = c.oid
+    JOIN pg_namespace n ON c.relnamespace = n.oid
+    WHERE n.nspname = 'public' AND NOT t.tgisinternal
+  ")"
+  if [[ -n "${triggers// }" ]]; then
+    target_psql -c "$triggers"
+  fi
+}
+
 dump_query() {
   local sql="$1"
   local outfile="$2"
@@ -69,6 +110,8 @@ restore_csv() {
 }
 
 echo "Seeding isolated Postgres at ${TARGET_HOST}:${TARGET_PORT} with ${ENTITY} [${START_PK}..${END_PK}]"
+
+copy_triggers_and_functions
 
 case "$ENTITY" in
   customers)
