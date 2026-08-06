@@ -62,11 +62,20 @@
   `./scripts/dlq-seed-subset.sh <entity> <start_pk> <end_pk> localhost 15432`
 
 ## DLQ agent concurrency
-- Single-agent flock on `.dlq-agent.lock` (one PID file; no `.dlq-agent.lock.lock`) — if held, the runner exits 0
+- No self-exclusion check — concurrent runs are allowed and safe (see git isolation below);
+  a prior `pgrep`-based check was removed after it caused a self-collision livelock
+  (two processes from the same `npm run dlq` invocation each saw the other and both exited)
 - Processes only `MongoSchemaValidationException` and `BulkOperationException`
 - Skips a batch if an open PR already exists for branch
   `dlq-fix/<entity>-<startPk>-<endPk>`; other open DLQ PRs do not block different batches
-- Branch creation: `git fetch origin main` then
-  `git checkout -B dlq-fix/<entity>-<startPk>-<endPk> origin/main`
-  (always off remote `main`, never local `main`)
+- **Git isolation**: before invoking the agent, `dlq-agent.ts` creates a dedicated
+  `git worktree` per batch under the OS tmp dir (`git fetch origin main` then
+  `git worktree add <tmp-dir> -b dlq-fix/<entity>-<startPk>-<endPk> origin/main`)
+  and points the agent's `cwd` at that worktree — **never** at this repo's own
+  working directory. All agent git ops (commit/push/PR) happen inside that
+  isolated worktree, which shares this repo's `.git`/remotes but has its own
+  checked-out branch and files, so a cron-triggered agent run can never check
+  out a branch or reset files out from under whoever is actively working in
+  this repo. The worktree (and its local branch ref) is removed when the run
+  finishes, success or failure.
 - Does not mark DLQ rows resolved (post-merge / successful backfill is separate)
