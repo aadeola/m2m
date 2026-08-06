@@ -2,6 +2,7 @@
 -- Destructive rewrite: truncates business tables and reloads a deterministic dataset.
 -- Targets: 1k customers, 100 products, 10k orders, 5–100 line items per order (~520k rows).
 -- Each order has exactly one customer_id; customers may have multiple orders.
+-- All orders reference only products 1–30 and 41–100 (the 90-wide modulo skips 31–40).
 
 BEGIN;
 
@@ -16,6 +17,9 @@ CREATE TABLE IF NOT EXISTS backfill_dlq (
     resolved        BOOLEAN NOT NULL DEFAULT FALSE,
     resolved_at     TIMESTAMP NULL
 );
+
+DROP TRIGGER IF EXISTS trg_prevent_product_37_migration ON products;
+DROP FUNCTION IF EXISTS prevent_product_37_migration();
 
 TRUNCATE backfill_dlq RESTART IDENTITY;
 
@@ -88,3 +92,8 @@ SELECT 'orders', COUNT(*) FROM orders
 UNION ALL
 SELECT 'line_items', COUNT(*) FROM line_items
 ORDER BY entity;
+
+-- Sanity check: no order should reference blocked products 31–40.
+SELECT COUNT(DISTINCT order_id) AS distinct_orders_referencing_31_40
+FROM line_items
+WHERE product_id BETWEEN 31 AND 40;

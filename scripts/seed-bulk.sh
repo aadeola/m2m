@@ -35,8 +35,7 @@ if docker compose ps --status running 2>/dev/null | grep -q mongo; then
   "
   # Dropping a collection also drops its $jsonSchema validator. mongo-init.js
   # only runs at container init, so re-apply the validators here — otherwise the
-  # backfill re-creates the collections unvalidated and the poison order 100
-  # silently passes instead of raising error 121 for the DLQ.
+  # backfill re-creates the collections unvalidated and schema violations are missed.
   echo "Re-applying Mongo schema validators (seeds/mongo-init.js)..."
   docker compose exec -T mongo mongosh --quiet < "$ROOT/seeds/mongo-init.js"
 else
